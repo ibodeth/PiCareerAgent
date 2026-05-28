@@ -1145,7 +1145,7 @@ class TelegramBot:
             "You are a highly advanced autonomous AI systems administrator and software engineer running inside a Docker container.\n"
             "You possess full agentic access to the container with 5 powerful tools:\n"
             "1. execute_bash (running shell commands inside the container)\n"
-            "2. read_file (reading text files. Optional args: start_line, end_line for specific line ranges in large files like app.py)\n"
+            "2. read_file (reading text files. By default, it reads up to 150,000 characters, allowing you to read entire large files like app.py in one go. You can also specify start_line and end_line for specific line ranges when files are extremely large.)\n"
             "3. write_file (creating/writing text files)\n"
             "4. query_database (querying the SQLite data/careeragent.db)\n"
             "5. modify_code (updating your own app.py source code via search-and-replace)\n\n"
@@ -1179,7 +1179,7 @@ class TelegramBot:
             "You can execute shell commands, read and write files, query the SQLite database, and modify your own source code (app.py) using search-and-replace.\n\n"
             "SAFETY & SELF-PRESERVATION PROTOCOL:\n"
             "1. Do NOT inject blocking infinite loops (like `while True` or `time.sleep`) directly into the global module scope of `app.py` or before system initialization, as this will lock the main thread, prevent system startup, and kill your process forever. Any repetitive tasks must be run in background threads or safe intervals.\n"
-            "2. If you need to modify the code, you MUST use the 'read_file' tool first to read 'app.py' and inspect the exact lines of code you want to replace. Do NOT guess the source code structure; inspect it first to guarantee successful search-and-replaces.\n\n"
+            "2. If you need to modify the code, you MUST use the 'read_file' tool first to read 'app.py' and inspect the exact lines of code you want to replace. Do NOT ask the user for line numbers or file structure; you are fully autonomous! Inspect the file first (which supports up to 150,000 characters in a single call) to locate the exact target code block on your own, then proceed with the modification.\n\n"
             "ENVIRONMENT LIMITATIONS:\n"
             "You are running inside a headless Docker Linux container (Debian-based) with NO GUI, NO X server, and NO active desktop/GUI windows.\n"
             "Do NOT attempt to run commands like xdotool, wmctrl, x11, or other GUI/desktop window tools because they will fail or timeout.\n"
@@ -1190,7 +1190,7 @@ class TelegramBot:
             "Do NOT just output the code in a chat response and claim you will run it. You are an agent; you must take the actual administrative action and report the execution output to the user!\n\n"
             "AVAILABLE TOOLS:\n"
             "1. execute_bash: Run a shell command in the container. Returns stdout, stderr. Args: {\"tool\": \"execute_bash\", \"command\": \"cmd\"}\n"
-            "2. read_file: Read a text file. Optional args: \"start_line\" (int), \"end_line\" (int) to read specific line ranges in large files (e.g. to inspect app.py). Args: {\"tool\": \"read_file\", \"filepath\": \"path\", \"start_line\": 1, \"end_line\": 100}\n"
+            "2. read_file: Read a text file. By default, it reads up to 150,000 characters at once, allowing you to read the entire app.py or large files in one go without specifying lines. For extremely large files, you can optionally pass \"start_line\" (int) and \"end_line\" (int) to read specific ranges/chunks. Args: {\"tool\": \"read_file\", \"filepath\": \"path\", \"start_line\": 1, \"end_line\": 100}\n"
             "3. write_file: Write/overwrite a text file. Args: {\"tool\": \"write_file\", \"filepath\": \"path\", \"content\": \"data\"}\n"
             "4. query_database: Run a SQL query against the database (data/careeragent.db). Args: {\"tool\": \"query_database\", \"sql\": \"query\"}\n"
             "5. modify_code: Perform search-and-replace on app.py. Args: {\"tool\": \"modify_code\", \"find\": \"old\", \"replace\": \"new\"}\n"
@@ -1213,8 +1213,19 @@ class TelegramBot:
             llm_prompt += f"USER REQUEST:\n{prompt_text}\n\n"
             if history:
                 llm_prompt += "PREVIOUS TOOL CALL EXECUTION HISTORY:\n"
-                for h in history:
-                    llm_prompt += f"Tool Called: {h['tool']}\nArguments: {json.dumps(h['args'])}\nResult:\n{h['result']}\n\n"
+                for idx, h in enumerate(history):
+                    tool_res = h['result'] or ""
+                    # Compact older tool results in the history loop if they are very large (> 4000 chars)
+                    # The most recent result is kept 100% in full so the model has fresh context.
+                    is_most_recent = (idx == len(history) - 1)
+                    if not is_most_recent and len(tool_res) > 4000:
+                        compacted_len = len(tool_res)
+                        tool_res = (
+                            f"{tool_res[:1000]}\n\n"
+                            f"[... {compacted_len - 2000} characters COMPACTED/OMITTED by system to optimize token context ...]\n\n"
+                            f"{tool_res[-1000:]}"
+                        )
+                    llm_prompt += f"Tool Called: {h['tool']}\nArguments: {json.dumps(h['args'])}\nResult:\n{tool_res}\n\n"
             
             try:
                 raw_res = LLMClient.call_llm(LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, llm_prompt, system_instruction, response_format_json=True)
@@ -1269,7 +1280,13 @@ class TelegramBot:
                             e = int(end_line) if end_line else len(lines)
                             tool_result = "".join(lines[s:e])
                         else:
-                            tool_result = f.read()[:8000]
+                            # Support reading up to 150,000 characters by default to allow full reading of large codebases.
+                            # If the file exceeds this limit, append a truncation warning explaining how to read in chunks.
+                            content_data = f.read(150000)
+                            if f.read(1):  # Check if there is still more content in the file
+                                tool_result = content_data + "\n\n[TRUNCATED: File is larger than 150,000 characters. Use 'start_line' and 'end_line' parameters to read specific sections of this file.]"
+                            else:
+                                tool_result = content_data
                         
                 elif tool_name == "write_file":
                     path = action.get("filepath", "")
