@@ -1994,38 +1994,32 @@ def compile_data_to_prompt(firecrawl_results: list) -> str:
 
 def generate_search_queries_with_ai(region: str, language: str, provider: str, model: str, api_key: str) -> list:
     system_instruction = (
-        "You are an expert search engine optimization engineer and a global technology opportunity hunter. "
-        "Your job is to output exactly 10 highly optimized search queries "
-        "designed to find active, free technology opportunities for developers.\n\n"
-        "MANDATORY CATEGORIES — every run MUST include at least one query per category below:\n"
-        "1. DEEP LOCAL GOVERNMENT: Official government technology portals for the given region "
-        "(e.g., btkakademi.gov.tr, tubitak.gov.tr, technology.gov, aicte-india.org). "
-        "Include local government IT initiatives, digital transformation offices, and national coding programs.\n"
-        "2. FREE CERTIFICATES & ONLINE COURSES: At least 2 queries MUST target free or heavily discounted certificates/courses:\n"
-        "   - Cloud certificates: AWS Skill Builder free tier, Google Cloud Skills Boost, Microsoft Azure free training, Oracle Cloud free certification\n"
-        "   - AI/ML courses: NVIDIA Deep Learning Institute (DLI) free, fast.ai, DeepLearning.AI free audit, Hugging Face courses\n"
-        "   - Developer platforms: IBM SkillsBuild, Meta Spark AR, JetBrains Academy, GitHub Certifications, Cisco NetAcad free\n"
-        "   - Open universities: Coursera free audit, edX audit, Udacity free nanodegree, MIT OpenCourseWare, Harvard CS50 (all free)\n"
-        "   - Local platforms (for tr region): BTK Akademi ücretsiz sertifika, Patika.dev ücretsiz kurs, Kodluyoruz bootcamp\n"
-        "3. HACKATHONS & CTFs: Active developer hackathons, Capture-The-Flag competitions (CTFtime.org), and coding contests.\n"
-        "4. BOOTCAMPS & INTENSIVE PROGRAMS: Free or scholarship-based intensive coding bootcamps (not just MOOCs).\n"
-        "5. DEFENSE & NICHE ACADEMIES: Military/defense technology academies, 42 School network campuses, national AI academies "
-        "(e.g., 42 Istanbul, Milli Teknoloji Akademisi, SSB programs, ENSIBS France, US DoD STEM).\n"
-        "6. ELITE GLOBAL PROGRAMS: Google Summer of Code, LFX Mentorship, MLH Fellowship, Outreachy, CERN openlab.\n"
-        "7. DEADLINE-FOCUSED: Queries specifically targeting 'application deadline 2026', 'başvuru son tarihi 2026', "
-        "'registration open 2026' to catch newly announced opportunities.\n"
-        "\nRULES:\n"
+        "You are an expert search engine optimization engineer and a technology career opportunity hunter.\n"
+        "Your job is to output exactly 10 highly optimized search queries to find active, free technology opportunities for developers.\n\n"
+        "MANDATORY STRUCTURE — You MUST follow this structure exactly:\n"
+        "General Searches (Queries 1-5):\n"
+        "1. Hackathon/Ideathon based opportunities.\n"
+        "2. Free tech/coding/AI certificate programs.\n"
+        "3. Tech/software developer internship listings.\n"
+        "4. Software training courses/bootcamps.\n"
+        "5. General technology career/opportunity search.\n\n"
+        "Niche/Specific Searches (Queries 6-10):\n"
+        "6. BTK Akademi focused (use site:btkakademi.gov.tr or 'BTK Akademi').\n"
+        "7. Patika.dev focused (use site:patika.dev or 'Patika.dev').\n"
+        "8. Coderspace or Kodluyoruz focused (use site:coderspace.co, site:kodluyoruz.org, 'Coderspace', or 'Kodluyoruz').\n"
+        "9. Niche programs or active opportunities from Google.\n"
+        "10. Niche programs or active opportunities from Microsoft.\n\n"
+        "RULES:\n"
         "- Output exactly 10 lines, one raw search query per line.\n"
-        "- No numbers, bullets, quotes, or markdown.\n"
-        "- Tailor ALL queries deeply to the specified region and language.\n"
-        "- Prefer queries that find obscure or niche programs not easily discovered."
+        "- Do NOT include headers, category names, bullets, numbers, quotes, or markdown.\n"
+        "- Tailor all queries deeply to the specified region, language, and the year 2026."
     )
     prompt = (
         f"Generate exactly 10 highly optimized search queries for the following settings:\n"
         f"Target Region: {region}\n"
         f"Target Language: {language}\n"
         f"Year: 2026\n"
-        f"Remember: MUST include at least 2 certificate/course queries (AWS, GCP, Azure, IBM, NVIDIA, Coursera, edX, Harvard CS50, etc.)"
+        f"Remember: Use the 5 general + 5 niche structure exactly."
     )
     
     try:
@@ -2046,24 +2040,30 @@ def generate_search_queries_with_ai(region: str, language: str, provider: str, m
 def get_search_queries(region: str, language: str) -> list:
     region = region.lower().strip()
     language = language.lower().strip()
-    if region == "tr" or (region == "global" and language == "tr"):
+    if region == "tr" or (region == "global" and language == "tr") or language == "tr":
         return [
-            "site:btkakademi.gov.tr ücretsiz eğitim yazılım kampı bootcamp sertifika 2026",
-            "site:tubitak.gov.tr OR site:bilgem.tubitak.gov.tr yazılım ctf yarışma hackathon 2026",
-            "site:cbddo.gov.tr siber güvenlik kampı ctf hackathon 2026",
-            "site:teknofest.org teknoloji yarışmaları hackathon başvuru 2026",
-            "AWS Skill Builder ücretsiz sertifika Google Cloud Skills Boost Microsoft Learn 2026",
-            "NVIDIA Deep Learning Institute DLI ücretsiz kurs IBM SkillsBuild 2026",
-            "Coursera edX ücretsiz sertifika programı audit modu yazılım yapay zeka 2026",
-            "42 İstanbul başvuru 2026 OR Milli Teknoloji Akademisi burs 2026",
-            "Harvard CS50 MIT OpenCourseWare ücretsiz sertifika Google Summer of Code 2026",
-            "Patika.dev OR Kodluyoruz OR techcareer.net ücretsiz bootcamp başvuru 2026",
+            "ücretsiz yazılım kampı hackathon ideathon yarışmaları 2026",
+            "ücretsiz yazılım yapay zeka sertifika programları kursları 2026",
+            "yazılım geliştirici staj ilanları stajyer alımı başvuruları 2026",
+            "ücretsiz yazılım eğitim kursları online bootcamp dersleri 2026",
+            "yazılım kariyer fırsatları ücretsiz teknoloji eğitimleri 2026",
+            "site:btkakademi.gov.tr yazılım eğitim kampı bilişim bootcamp 2026",
+            "site:patika.dev yazılım eğitim kampları ücretsiz bootcamp 2026",
+            "site:coderspace.co OR site:kodluyoruz.org ücretsiz yazılım etkinlikleri bootcamp kariyer 2026",
+            "Google ücretsiz yazılım sertifika programı staj kampı 2026",
+            "Microsoft ücretsiz bulut yazılım eğitim programları 2026"
         ]
     return [
-        "free coding bootcamp remote hackathon online 2026",
-        "top global free software certification Google IBM Microsoft Harvard MIT 2026",
-        "active developer CTF competitions global online 2026",
-        "free computer science training certificate courses 2026"
+        "free coding hackathon ideathon software developer contest 2026",
+        "free software engineering AI cloud certificate program 2026",
+        "software developer engineering internship active application openings 2026",
+        "free software developer training courses intensive bootcamp 2026",
+        "software engineering career opportunities global free tech programs 2026",
+        "site:btkakademi.gov.tr free software training courses 2026",
+        "site:patika.dev free coding bootcamp active registration 2026",
+        "site:coderspace.co OR site:kodluyoruz.org free tech career events bootcamps 2026",
+        "Google free coding training developer internship certificate 2026",
+        "Microsoft free cloud engineering certificate training 2026"
     ]
 
 def get_agent_prompt(region: str) -> str:
