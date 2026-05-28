@@ -973,26 +973,29 @@ class TelegramBot:
                 if update_id > max_update_id:
                     max_update_id = update_id
                     
-                # Handle Inline Button Clicks (Callback Queries)
-                if "callback_query" in update:
-                    cls.process_callback_query(update["callback_query"], bot_token, db, authorized_ids)
-                    continue
-                    
-                message = update.get("message")
-                if not message:
-                    continue
-                    
-                chat_id = str(message.get("chat", {}).get("id", ""))
-                text = message.get("text", "").strip()
-                if not chat_id or not text:
-                    continue
-                    
-                # [ACCESS CONTROL RESTORED] Ensure only authorized Chat IDs can run commands
-                if authorized_ids and chat_id not in authorized_ids:
-                    cls.send_message("❌ *Access Denied.* You do not have permission to access this CareerAgent.", bot_token, chat_id)
-                    continue
-                    
-                cls.process_command(chat_id, text, bot_token, db)
+                try:
+                    # Handle Inline Button Clicks (Callback Queries)
+                    if "callback_query" in update:
+                        cls.process_callback_query(update["callback_query"], bot_token, db, authorized_ids)
+                        continue
+                        
+                    message = update.get("message")
+                    if not message:
+                        continue
+                        
+                    chat_id = str(message.get("chat", {}).get("id", ""))
+                    text = message.get("text", "").strip()
+                    if not chat_id or not text:
+                        continue
+                        
+                    # [ACCESS CONTROL RESTORED] Ensure only authorized Chat IDs can run commands
+                    if authorized_ids and chat_id not in authorized_ids:
+                        cls.send_message("❌ *Access Denied.* You do not have permission to access this CareerAgent.", bot_token, chat_id)
+                        continue
+                        
+                    cls.process_command(chat_id, text, bot_token, db)
+                except Exception as ex:
+                    logging.error(f"Error processing single Telegram update {update_id}: {ex}", exc_info=True)
                 
             if max_update_id >= offset:
                 with db_lock:
