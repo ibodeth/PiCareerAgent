@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  picareeragent:
+    build: .
+    container_name: picareeragent
+    restart: unless-stopped
+    env_file:
+      - .env
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    volumes:
+      - ./data:/app/data
+      - ./app.py:/app/app.py
