@@ -2190,16 +2190,11 @@ def setup_signal_handlers(bot_token: str, db: DatabaseManager):
 
 
 def backup_database_to_google_drive(db_path: str, db: DatabaseManager) -> bool:
-    """Backs up the SQLite database file to Google Drive using a Service Account."""
+    """Backs up the SQLite database file to Google Drive root folder (Service Account or OAuth2 Web/Installed Client)."""
     credentials_path = os.getenv("GOOGLE_DRIVE_CREDENTIALS_PATH", "data/google_credentials.json")
-    folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
     
     if not os.path.exists(credentials_path):
         logging.warning(f"Google Drive credentials file not found at '{credentials_path}'. Daily backup skipped.")
-        return False
-        
-    if not folder_id:
-        logging.warning("GOOGLE_DRIVE_FOLDER_ID is not configured in environment variables. Daily backup skipped.")
         return False
         
     try:
@@ -2207,12 +2202,47 @@ def backup_database_to_google_drive(db_path: str, db: DatabaseManager) -> bool:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
         
-        logging.info("Initiating SQLite database backup to Google Drive...")
+        logging.info("Initiating SQLite database backup to Google Drive root...")
         
-        # Load service account credentials with the drive.file scope (allows creating/updating files)
+        # Load credentials based on JSON structure (Service Account vs OAuth2 Web/Installed client)
         scopes = ['https://www.googleapis.com/auth/drive.file']
-        creds = service_account.Credentials.from_service_account_file(credentials_path, scopes=scopes)
+        creds = None
         
+        with open(credentials_path, "r", encoding="utf-8") as f:
+            creds_data = json.load(f)
+            
+        if "type" in creds_data and creds_data["type"] == "service_account":
+            creds = service_account.Credentials.from_service_account_file(credentials_path, scopes=scopes)
+        elif "web" in creds_data or "installed" in creds_data:
+            # OAuth2 User Flow with token.json
+            from google.auth.transport.requests import Request
+            from google.oauth2.credentials import Credentials
+            
+            token_path = os.getenv("GOOGLE_DRIVE_TOKEN_PATH", "data/token.json")
+            if os.path.exists(token_path):
+                creds = Credentials.from_authorized_user_file(token_path, scopes)
+                
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    logging.warning("OAuth2 credentials token not found or invalid at 'data/token.json'. Please place your authorized 'token.json' file there.")
+                    
+                    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+                    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+                    if bot_token and chat_id:
+                        msg = (
+                            "⚠️ *GOOGLE DRIVE YEDEKLEME YETKİLENDİRME HATASI!* ⚠️\n\n"
+                            "OAuth2 `data/token.json` dosyası bulunamadı veya geçerli değil. "
+                            "Web istemcisi kullanıyorsanız önce yetkilendirme yapıp `token.json` dosyasını sunucuya eklemelisiniz. "
+                            "Alternatif olarak, doğrudan başsız çalışan bir *Google Service Account (Servis Hesabı)* anahtarı kullanmanızı öneririm."
+                        )
+                        TelegramBot.send_message(msg, bot_token, chat_id)
+                    return False
+        else:
+            logging.warning("Unknown Google credentials format in 'data/google_credentials.json'.")
+            return False
+            
         service = build('drive', 'v3', credentials=creds)
         
         # Format filename: careeragent_backup_YYYY-MM-DD_HHMMSS.db
@@ -2220,10 +2250,9 @@ def backup_database_to_google_drive(db_path: str, db: DatabaseManager) -> bool:
         backup_filename = f"careeragent_backup_{timestamp}.db"
         
         file_metadata = {
-            'name': backup_filename,
-            'parents': [folder_id]
+            'name': backup_filename
         }
-        
+            
         media = MediaFileUpload(db_path, mimetype='application/x-sqlite3', resumable=True)
         
         uploaded_file = service.files().create(
