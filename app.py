@@ -1142,7 +1142,7 @@ class TelegramBot:
             "You are a highly advanced autonomous AI systems administrator and software engineer running inside a Docker container.\n"
             "You possess full agentic access to the container with 5 powerful tools:\n"
             "1. execute_bash (running shell commands inside the container)\n"
-            "2. read_file (reading text files)\n"
+            "2. read_file (reading text files. Optional args: start_line, end_line for specific line ranges in large files like app.py)\n"
             "3. write_file (creating/writing text files)\n"
             "4. query_database (querying the SQLite data/careeragent.db)\n"
             "5. modify_code (updating your own app.py source code via search-and-replace)\n\n"
@@ -1187,7 +1187,7 @@ class TelegramBot:
             "Do NOT just output the code in a chat response and claim you will run it. You are an agent; you must take the actual administrative action and report the execution output to the user!\n\n"
             "AVAILABLE TOOLS:\n"
             "1. execute_bash: Run a shell command in the container. Returns stdout, stderr. Args: {\"tool\": \"execute_bash\", \"command\": \"cmd\"}\n"
-            "2. read_file: Read a text file. Args: {\"tool\": \"read_file\", \"filepath\": \"path\"}\n"
+            "2. read_file: Read a text file. Optional args: \"start_line\" (int), \"end_line\" (int) to read specific line ranges in large files (e.g. to inspect app.py). Args: {\"tool\": \"read_file\", \"filepath\": \"path\", \"start_line\": 1, \"end_line\": 100}\n"
             "3. write_file: Write/overwrite a text file. Args: {\"tool\": \"write_file\", \"filepath\": \"path\", \"content\": \"data\"}\n"
             "4. query_database: Run a SQL query against the database (data/careeragent.db). Args: {\"tool\": \"query_database\", \"sql\": \"query\"}\n"
             "5. modify_code: Perform search-and-replace on app.py. Args: {\"tool\": \"modify_code\", \"find\": \"old\", \"replace\": \"new\"}\n"
@@ -1256,9 +1256,17 @@ class TelegramBot:
                     
                 elif tool_name == "read_file":
                     path = action.get("filepath", "")
-                    logging.info(f"[Agent Tool read_file] Path: {path}")
+                    start_line = action.get("start_line")
+                    end_line = action.get("end_line")
+                    logging.info(f"[Agent Tool read_file] Path: {path}, Lines: {start_line}-{end_line}")
                     with open(path, "r", encoding="utf-8") as f:
-                        tool_result = f.read()[:8000]
+                        if start_line is not None or end_line is not None:
+                            lines = f.readlines()
+                            s = (int(start_line) - 1) if start_line else 0
+                            e = int(end_line) if end_line else len(lines)
+                            tool_result = "".join(lines[s:e])
+                        else:
+                            tool_result = f.read()[:8000]
                         
                 elif tool_name == "write_file":
                     path = action.get("filepath", "")
