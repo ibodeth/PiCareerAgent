@@ -1068,9 +1068,32 @@ class TelegramBot:
 
     @classmethod
     def handle_natural_language_code_mod(cls, chat_id: str, prompt_text: str, bot_token: str, db: DatabaseManager):
-        cls.send_message("🤖 *Agentic CareerAgent is initializing... / Yapay zeka ajanı başlatılıyor...*", bot_token, chat_id)
-        
         global LLM_PROVIDER, LLM_MODEL, LLM_API_KEY
+
+        # Check if the user prompt is a simple greeting, conversational question, or general query.
+        # We run a single fast LLM call without tool definition to reply directly, or output "__AGENT_REQUIRED__" if actual actions are needed.
+        classification_instruction = (
+            "You are a helpful and intelligent AI system administrator. Your task is to determine whether the user's "
+            "message is a simple greeting, conversational question, or general query that does not require any "
+            "actual system operations (such as running shell commands, modifying code, querying the database, or reading/writing files).\n\n"
+            "If the request is a simple greeting or general conversational query (e.g. 'selam', 'merhaba', 'hello', 'hi', "
+            "'nasılsın', 'what is this bot?', 'kimsin'), please respond to it directly in a polite, friendly, helpful, and natural way "
+            "in the user's language.\n"
+            "If the request requires executing commands, querying the database, inspecting/writing files, or modifying code, "
+            "you MUST output EXACTLY the word: __AGENT_REQUIRED__"
+        )
+        try:
+            logging.info(f"Classifying user natural language prompt: '{prompt_text}'")
+            classification_resp = LLMClient.call_llm(LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, prompt_text, classification_instruction)
+            classification_resp_cleaned = classification_resp.strip()
+            
+            if "__AGENT_REQUIRED__" not in classification_resp_cleaned:
+                cls.send_message(classification_resp_cleaned, bot_token, chat_id)
+                return
+        except Exception as e:
+            logging.warning(f"Pre-classification LLM check failed: {e}. Falling back to full ReAct agent.")
+
+        cls.send_message("🤖 *Agentic CareerAgent is initializing... / Yapay zeka ajanı başlatılıyor...*", bot_token, chat_id)
         
         system_instruction = (
             "You are a highly advanced autonomous AI systems administrator and software engineer with full agentic access to the container.\n"
@@ -1084,7 +1107,9 @@ class TelegramBot:
             "6. final_answer: Provide the final conversational response to the user. Args: {\"tool\": \"final_answer\", \"message\": \"text\"}\n\n"
             "PROTOCOL:\n"
             "You must invoke exactly one tool at a time by returning a single JSON block. Do not output markdown code fences (like ```json), just raw JSON.\n"
-            "Analyze the user request, call tools in a loop as needed, and deliver the final answer when done."
+            "Analyze the user request, call tools in a loop as needed, and deliver the final answer when done.\n\n"
+            "CRITICAL: If the user request is conversational or does not require actual system operations, "
+            "IMMEDIATELY invoke the final_answer tool with your response message."
         )
         
         history = []
