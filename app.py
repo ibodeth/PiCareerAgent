@@ -643,12 +643,24 @@ class EmailScanner:
             mail.login(username, password)
             mail.select("INBOX")
             
+            # Search both: (1) All UNSEEN (unread) emails and (2) all emails received SINCE the last 2 days
             date_str = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
-            status, messages = mail.search(None, f'(SINCE "{date_str}")')
-            if status != "OK" or not messages[0]:
+            
+            # Fetch unread emails
+            status_unseen, unseen_messages = mail.search(None, 'UNSEEN')
+            unseen_ids = unseen_messages[0].split() if (status_unseen == "OK" and unseen_messages[0]) else []
+            
+            # Fetch emails from last 2 days
+            status_since, since_messages = mail.search(None, f'(SINCE "{date_str}")')
+            since_ids = since_messages[0].split() if (status_since == "OK" and since_messages[0]) else []
+            
+            # Merge and de-duplicate preserving order
+            merged_ids = unseen_ids + since_ids
+            seen = set()
+            mail_ids = [x for x in merged_ids if not (x in seen or seen.add(x))]
+            
+            if not mail_ids:
                 return
-                
-            mail_ids = messages[0].split()
             
             # Query existing processed messages inside SQLite (Thread-Safe Reads)
             with db_lock:
@@ -660,6 +672,14 @@ class EmailScanner:
                 if not keep_running:
                     break
                     
+                # Check if the email is currently unread (UNSEEN) to trigger a reminder if important
+                is_unseen = True
+                status_flags, flags_data = mail.fetch(mail_id, "(FLAGS)")
+                if status_flags == "OK" and flags_data[0]:
+                    flags_text = str(flags_data[0])
+                    if "\\Seen" in flags_text:
+                        is_unseen = False
+
                 status, header_data = mail.fetch(mail_id, "(BODY[HEADER.FIELDS (MESSAGE-ID)])")
                 if status != "OK" or not header_data[0]:
                     continue
@@ -739,8 +759,9 @@ class EmailScanner:
                                         )
                     
                     if language == "tr":
+                        header_prefix = f"⚠️ *OKUNMAMIŞ ÖNEMLİ E-POSTA HATIRLATMASI!* {urgency_emoji}\n\n" if is_unseen else f"📬 *YENİ ÖNEMLİ E-POSTA BİLDİRİMİ* {urgency_emoji}\n\n"
                         email_alert_msg = (
-                            f"📬 *YENİ ÖNEMLİ E-POSTA BİLDİRİMİ* {urgency_emoji}\n\n"
+                            f"{header_prefix}"
                             f"📧 *Hesap:* `{username}`\n"
                             f"👤 *Gönderen:* `{sender}`\n"
                             f"📝 *Konu:* *{subject}*\n"
@@ -750,8 +771,9 @@ class EmailScanner:
                             f"{tracker_sync_msg}"
                         )
                     else:
+                        header_prefix = f"⚠️ *UNREAD IMPORTANT EMAIL REMINDER!* {urgency_emoji}\n\n" if is_unseen else f"📬 *NEW IMPORTANT EMAIL ALERT* {urgency_emoji}\n\n"
                         email_alert_msg = (
-                            f"📬 *NEW IMPORTANT EMAIL ALERT* {urgency_emoji}\n\n"
+                            f"{header_prefix}"
                             f"📧 *Account:* `{username}`\n"
                             f"👤 *From:* `{sender}`\n"
                             f"📝 *Subject:* *{subject}*\n"
@@ -1688,9 +1710,22 @@ def run_user_sweeps(db: DatabaseManager, firecrawl_key: str, provider: str, mode
         lang = user["language"]
         region = user["region"]
         
-        # Check daily run logs
-        if user["last_run_date"] == today_str:
-            logging.info(f"Daily sweep already completed for User: {chat_id}. Skipping search.")
+        # Calculate if we should run the sweep cycle (configured to run once every 3 days to fit within monthly free limits)
+        last_run_str = user["last_run_date"]
+        should_run = False
+        if not last_run_str:
+            should_run = True
+        else:
+            try:
+                last_run_dt = datetime.strptime(last_run_str, "%Y-%m-%d")
+                delta = datetime.now() - last_run_dt
+                if delta.days >= 3:
+                    should_run = True
+            except Exception:
+                should_run = True
+                
+        if not should_run:
+            logging.info(f"Sweep cycle is configured for every 3 days. Skipping search sweep today for User: {chat_id}.")
         else:
             logging.info(f"Triggering active search sweep for User: {chat_id}...")
             
@@ -1701,8 +1736,8 @@ def run_user_sweeps(db: DatabaseManager, firecrawl_key: str, provider: str, mode
             for idx, query in enumerate(queries):
                 if not keep_running:
                     break
-                # Apply optimized limits to fit within credit constraints (Niche queries get limit=7, General get limit=5)
-                limit_val = 7 if idx >= 5 else 5
+                # Apply optimized limits: limit=10 for general queries (indices 0-4), limit=3 for specific niche queries (indices 5-9)
+                limit_val = 3 if idx >= 5 else 10
                 res = FirecrawlClient.firecrawl_search(query, firecrawl_key, limit=limit_val)
                 if res:
                     search_results.extend(res)
