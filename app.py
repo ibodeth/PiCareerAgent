@@ -22,6 +22,10 @@ from dotenv import load_dotenv
 import litellm
 from litellm import completion
 
+# Set LiteLLM request timeout and retries globally to prevent indefinite hanging on slow API endpoints
+litellm.request_timeout = 30
+litellm.num_retries = 2
+
 # Global lifecycle variables and thread safety locks
 keep_running = True
 db_lock = threading.Lock()
@@ -1144,8 +1148,8 @@ class TelegramBot:
         classification_instruction = (
             "You are a highly advanced autonomous AI systems administrator and software engineer running inside a Docker container.\n"
             "You possess full agentic access to the container with 5 powerful tools:\n"
-            "1. execute_bash (running shell commands inside the container)\n"
-            "2. read_file (reading text files. By default, it reads up to 150,000 characters, allowing you to read entire large files like app.py in one go. You can also specify start_line and end_line for specific line ranges when files are extremely large.)\n"
+            "1. execute_bash (running shell commands inside the container - including searching files using grep or python line counts)\n"
+            "2. read_file (reading text files. By default, it reads the first 20,000 characters. If the file is large, you can specify start_line and end_line for range-based section-by-section reading.)\n"
             "3. write_file (creating/writing text files)\n"
             "4. query_database (querying the SQLite data/careeragent.db)\n"
             "5. modify_code (updating your own app.py source code via search-and-replace)\n\n"
@@ -1179,7 +1183,9 @@ class TelegramBot:
             "You can execute shell commands, read and write files, query the SQLite database, and modify your own source code (app.py) using search-and-replace.\n\n"
             "SAFETY & SELF-PRESERVATION PROTOCOL:\n"
             "1. Do NOT inject blocking infinite loops (like `while True` or `time.sleep`) directly into the global module scope of `app.py` or before system initialization, as this will lock the main thread, prevent system startup, and kill your process forever. Any repetitive tasks must be run in background threads or safe intervals.\n"
-            "2. If you need to modify the code, you MUST use the 'read_file' tool first to read 'app.py' and inspect the exact lines of code you want to replace. Do NOT ask the user for line numbers or file structure; you are fully autonomous! Inspect the file first (which supports up to 150,000 characters in a single call) to locate the exact target code block on your own, then proceed with the modification.\n\n"
+            "2. If you need to modify the code, you MUST use the 'read_file' tool first to read 'app.py' and inspect the exact lines of code you want to replace. Do NOT ask the user for line numbers or file structure; you are fully autonomous! If the file is large, read it section-by-section (e.g., 300 lines at a time) using 'start_line' and 'end_line' parameters to locate the exact target code block on your own, then proceed with the modification.\n\n"
+            "PROACTIVE SEARCH PROTOCOL:\n"
+            "If you need to locate, display, or modify a specific block of code, text, variable, or function in a large file (such as 'system_instruction' or 'classification_instruction' in `app.py`) and you do not know where it is, you should use the 'execute_bash' tool to run a quick search command (e.g. `grep -n \"system_instruction\" app.py` or `python3 -c \"for i, line in enumerate(open('app.py')): gd = 'system_instruction' in line; print(f'{i+1}: {line.strip()}') if gd else None\"`) to find the exact line numbers first. Then, call 'read_file' with those line numbers to fetch the exact code. Do NOT just read the start of the file or guess!\n\n"
             "ENVIRONMENT LIMITATIONS:\n"
             "You are running inside a headless Docker Linux container (Debian-based) with NO GUI, NO X server, and NO active desktop/GUI windows.\n"
             "Do NOT attempt to run commands like xdotool, wmctrl, x11, or other GUI/desktop window tools because they will fail or timeout.\n"
@@ -1190,7 +1196,7 @@ class TelegramBot:
             "Do NOT just output the code in a chat response and claim you will run it. You are an agent; you must take the actual administrative action and report the execution output to the user!\n\n"
             "AVAILABLE TOOLS:\n"
             "1. execute_bash: Run a shell command in the container. Returns stdout, stderr. Args: {\"tool\": \"execute_bash\", \"command\": \"cmd\"}\n"
-            "2. read_file: Read a text file. By default, it reads up to 150,000 characters at once, allowing you to read the entire app.py or large files in one go without specifying lines. For extremely large files, you can optionally pass \"start_line\" (int) and \"end_line\" (int) to read specific ranges/chunks. Args: {\"tool\": \"read_file\", \"filepath\": \"path\", \"start_line\": 1, \"end_line\": 100}\n"
+            "2. read_file: Read a text file. By default, it reads the first 20,000 characters to optimize token usage. If the file is large, it returns a truncation warning with the total size and line count. To read specific sections, you must specify \"start_line\" (int) and \"end_line\" (int) (e.g., read lines 1100-1300 to locate system prompts). Args: {\"tool\": \"read_file\", \"filepath\": \"path\", \"start_line\": 1, \"end_line\": 100}\n"
             "3. write_file: Write/overwrite a text file. Args: {\"tool\": \"write_file\", \"filepath\": \"path\", \"content\": \"data\"}\n"
             "4. query_database: Run a SQL query against the database (data/careeragent.db). Args: {\"tool\": \"query_database\", \"sql\": \"query\"}\n"
             "5. modify_code: Perform search-and-replace on app.py. Args: {\"tool\": \"modify_code\", \"find\": \"old\", \"replace\": \"new\"}\n"
@@ -1280,11 +1286,20 @@ class TelegramBot:
                             e = int(end_line) if end_line else len(lines)
                             tool_result = "".join(lines[s:e])
                         else:
-                            # Support reading up to 150,000 characters by default to allow full reading of large codebases.
-                            # If the file exceeds this limit, append a truncation warning explaining how to read in chunks.
-                            content_data = f.read(150000)
-                            if f.read(1):  # Check if there is still more content in the file
-                                tool_result = content_data + "\n\n[TRUNCATED: File is larger than 150,000 characters. Use 'start_line' and 'end_line' parameters to read specific sections of this file.]"
+                            # Smart autonomous chunking: default to reading 20,000 characters.
+                            # If the file is larger, append a highly informative footer detailing total size/lines and guiding chunked reads.
+                            content_data = f.read(20000)
+                            f.seek(0)
+                            total_lines = len(f.readlines())
+                            f.seek(0, 2)
+                            total_size = f.tell()
+                            if total_size > 20000:
+                                tool_result = (
+                                    f"{content_data}\n\n"
+                                    f"[TRUNCATED: Only first 20,000 characters shown. The file '{path}' is {total_size} bytes long (approximately {total_lines} lines).\n"
+                                    f"To locate other sections or scan the codebase autonomously section-by-section, you MUST call 'read_file' again "
+                                    f"using 'start_line' and 'end_line' parameters (e.g. start_line=350, end_line=700).]"
+                                )
                             else:
                                 tool_result = content_data
                         
