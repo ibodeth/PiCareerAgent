@@ -1282,9 +1282,36 @@ class TelegramBot:
                     with open(path, "r", encoding="utf-8") as f:
                         if start_line is not None or end_line is not None:
                             lines = f.readlines()
-                            s = (int(start_line) - 1) if start_line else 0
-                            e = int(end_line) if end_line else len(lines)
-                            tool_result = "".join(lines[s:e])
+                            start_num = int(start_line) if start_line is not None else 1
+                            end_num = int(end_line) if end_line is not None else len(lines)
+                            
+                            # Clamp values to safe boundaries
+                            start_num = max(1, min(start_num, len(lines)))
+                            end_num = max(1, min(end_num, len(lines)))
+                            if start_num > end_num:
+                                start_num, end_num = end_num, start_num
+                                
+                            s = start_num - 1
+                            e = end_num
+                            
+                            requested_lines = e - s
+                            if requested_lines > 300:
+                                s_first = s
+                                e_first = s + 150
+                                s_last = e - 150
+                                e_last = e
+                                first_part = "".join(lines[s_first:e_first])
+                                last_part = "".join(lines[s_last:e_last])
+                                tool_result = (
+                                    f"{first_part}\n\n"
+                                    f"[TRUNCATED: The range you requested (from line {start_num} to {end_num}) is too large ({requested_lines} lines).\n"
+                                    f"To prevent API timeouts and token window congestion, the system has truncated the output.\n"
+                                    f"Showing the first 150 lines ({start_num} to {start_num + 150}) and the last 150 lines ({end_num - 150} to {end_num}).\n"
+                                    f"If you need to scan this entire section, please call 'read_file' systematically in smaller chunks of maximum 300 lines each (e.g. read lines {start_num} to {start_num + 300} first).]\n\n"
+                                    f"{last_part}"
+                                )
+                            else:
+                                tool_result = "".join(lines[s:e])
                         else:
                             # Smart autonomous chunking: default to reading 20,000 characters.
                             # If the file is larger, append a highly informative footer detailing total size/lines and guiding chunked reads.
