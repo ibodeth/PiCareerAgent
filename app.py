@@ -1065,13 +1065,116 @@ class TelegramBot:
                 "reply_markup": reply_markup
             }
             requests.post(edit_url, json=payload, timeout=20)
- 
+
+    @classmethod
+    def handle_natural_language_code_mod(cls, chat_id: str, prompt_text: str, bot_token: str, db: DatabaseManager):
+        cls.send_message("🧠 *Gemini is analyzing your request to modify the codebase... / Gemini kod değişikliği isteğinizi analiz ediyor...*", bot_token, chat_id)
+        
+        file_path = "app.py"
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                current_code = f.read()
+        except Exception as e:
+            cls.send_message(f"❌ *Error reading app.py:* `{e}`", bot_token, chat_id)
+            return
+
+        system_instruction = (
+            "You are an expert autonomous software engineer with write access to your own source code file ('app.py').\n"
+            "The user wants to make a change to the code. You must output a JSON object containing a list of search-and-replace blocks to modify 'app.py'.\n\n"
+            "RULES:\n"
+            "1. In the JSON, the 'find' block MUST match the existing code in 'app.py' exactly, including leading spaces, tabs, and newlines.\n"
+            "2. The 'replace' block should contain the new code to replace the matched block.\n"
+            "3. Ensure the modified python code is 100% syntactically correct and free of typos.\n"
+            "4. Output strictly valid JSON matching this schema (do not wrap in markdown or return extra text, just raw JSON):\n"
+            "{\n"
+            "  \"explanation\": \"Brief explanation of what changes will be applied.\",\n"
+            "  \"replacements\": [\n"
+            "    {\n"
+            "      \"find\": \"def old_function():\\n    pass\",\n"
+            "      \"replace\": \"def old_function():\\n    # New implementation\\n    print('updated')\"\n"
+            "    }\n"
+            "  ]\n"
+            "}"
+        )
+
+        llm_prompt = (
+            f"USER REQUEST:\n{prompt_text}\n\n"
+            f"CURRENT SOURCE CODE OF 'app.py' (Analyze this code to locate the blocks to modify):\n"
+            f"{current_code}"
+        )
+
+        global LLM_PROVIDER, LLM_MODEL, LLM_API_KEY
+        
+        try:
+            raw_res = LLMClient.call_llm(LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, llm_prompt, system_instruction, response_format_json=True)
+            cleaned_res = LLMClient.clean_json_response(raw_res)
+            data = json.loads(cleaned_res)
+            
+            explanation = data.get("explanation", "Applying code changes.")
+            replacements = data.get("replacements", [])
+            
+            if not replacements:
+                cls.send_message("⚠️ *Gemini determined no code changes were needed for this request.*", bot_token, chat_id)
+                return
+                
+            cls.send_message(f"🛠️ *Explanation / Açıklama:* {explanation}\n\n*Applying {len(replacements)} code change(s)...*", bot_token, chat_id)
+            
+            modified_code = current_code
+            mismatch = False
+            for idx, rep in enumerate(replacements, 1):
+                find_block = rep["find"]
+                replace_block = rep["replace"]
+                
+                if find_block in modified_code:
+                    modified_code = modified_code.replace(find_block, replace_block, 1)
+                else:
+                    mismatch = True
+                    cls.send_message(f"❌ *Error:* Replacement #{idx} could not find matching code block in 'app.py'. Modification cancelled.", bot_token, chat_id)
+                    break
+                    
+            if mismatch:
+                return
+                
+            temp_file_path = "app_temp.py"
+            with open(temp_file_path, "w", encoding="utf-8") as f:
+                f.write(modified_code)
+                
+            import py_compile
+            try:
+                py_compile.compile(temp_file_path, doraise=True)
+            except Exception as syntax_err:
+                cls.send_message(f"❌ *Syntax Error in proposed changes:* `{syntax_err}`. Modification aborted for safety.", bot_token, chat_id)
+                try:
+                    os.remove(temp_file_path)
+                except Exception:
+                    pass
+                return
+                
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(modified_code)
+                
+            try:
+                os.remove(temp_file_path)
+            except Exception:
+                pass
+                
+            cls.send_message("✅ *Code updated and verified! Self-restarting daemon... / Kod güncellendi ve doğrulandı! Sistem kendini yeniden başlatıyor...*", bot_token, chat_id)
+            
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+            
+        except Exception as err:
+            cls.send_message(f"❌ *Failed to complete self-modification:* `{err}`", bot_token, chat_id)
+
     @classmethod
     def process_command(cls, chat_id: str, text: str, bot_token: str, db: DatabaseManager):
         with db_lock:
             with db.get_connection() as conn:
                 user = conn.execute("SELECT * FROM users WHERE chat_id = ?", (chat_id,)).fetchone()
             
+        if not text.startswith("/"):
+            cls.handle_natural_language_code_mod(chat_id, text, bot_token, db)
+            return
+
         if text.startswith("/start"):
             if not user:
                 # Register new user immediately
