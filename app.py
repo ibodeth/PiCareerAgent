@@ -360,7 +360,17 @@ class LLMClient:
         """Invokes LLM models dynamically using LiteLLM with unified format calls and retry resilience."""
         provider = provider.lower().strip()
         model = model.strip()
-        model_str = model if "/" in model else f"{provider}/{model}"
+        
+        # Build robust model string, ensuring openrouter/ prefix for OpenRouter provider models
+        if provider == "openrouter" and not model.startswith("openrouter/"):
+            model_str = f"openrouter/{model}"
+        else:
+            model_str = model if "/" in model else f"{provider}/{model}"
+            
+        # Guarantee OPENROUTER_API_KEY environment variable is configured for LiteLLM routing
+        if "openrouter" in model_str:
+            os.environ["OPENROUTER_API_KEY"] = api_key
+            
         max_retries = 3
         base_backoff = 2
         
@@ -376,7 +386,10 @@ class LLMClient:
                     "api_key": api_key,
                     "temperature": 0.1
                 }
-                if response_format_json:
+                
+                # Some providers/models (like OpenRouter free models) do not support response_format parameter.
+                # We exclude it for OpenRouter models to prevent remote API Bad Request errors.
+                if response_format_json and "openrouter" not in model_str and provider != "openrouter":
                     kwargs["response_format"] = {"type": "json_object"}
                     
                 logging.info(f"Dispatching unified LiteLLM completion request (Attempt {attempt+1}/{max_retries}) for model: {model_str}")
