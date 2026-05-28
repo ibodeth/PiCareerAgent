@@ -643,14 +643,14 @@ class EmailScanner:
             mail.login(username, password)
             mail.select("INBOX")
             
-            # Search both: (1) All UNSEEN (unread) emails and (2) all emails received SINCE the last 2 days
-            date_str = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
+            # Search both: (1) UNSEEN (unread) emails since 1 day ago and (2) all emails received SINCE 1 day ago
+            date_str = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
             
-            # Fetch unread emails
-            status_unseen, unseen_messages = mail.search(None, 'UNSEEN')
+            # Fetch unread emails since 1 day ago
+            status_unseen, unseen_messages = mail.search(None, f'(UNSEEN SINCE "{date_str}")')
             unseen_ids = unseen_messages[0].split() if (status_unseen == "OK" and unseen_messages[0]) else []
             
-            # Fetch emails from last 2 days
+            # Fetch all emails from last 1 day
             status_since, since_messages = mail.search(None, f'(SINCE "{date_str}")')
             since_ids = since_messages[0].split() if (status_since == "OK" and since_messages[0]) else []
             
