@@ -1068,102 +1068,131 @@ class TelegramBot:
 
     @classmethod
     def handle_natural_language_code_mod(cls, chat_id: str, prompt_text: str, bot_token: str, db: DatabaseManager):
-        cls.send_message("🧠 *Gemini is analyzing your request to modify the codebase... / Gemini kod değişikliği isteğinizi analiz ediyor...*", bot_token, chat_id)
+        cls.send_message("🤖 *Agentic CareerAgent is initializing... / Yapay zeka ajanı başlatılıyor...*", bot_token, chat_id)
         
-        file_path = "app.py"
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                current_code = f.read()
-        except Exception as e:
-            cls.send_message(f"❌ *Error reading app.py:* `{e}`", bot_token, chat_id)
-            return
-
-        system_instruction = (
-            "You are an expert autonomous software engineer with write access to your own source code file ('app.py').\n"
-            "The user wants to make a change to the code. You must output a JSON object containing a list of search-and-replace blocks to modify 'app.py'.\n\n"
-            "RULES:\n"
-            "1. In the JSON, the 'find' block MUST match the existing code in 'app.py' exactly, including leading spaces, tabs, and newlines.\n"
-            "2. The 'replace' block should contain the new code to replace the matched block.\n"
-            "3. Ensure the modified python code is 100% syntactically correct and free of typos.\n"
-            "4. Output strictly valid JSON matching this schema (do not wrap in markdown or return extra text, just raw JSON):\n"
-            "{\n"
-            "  \"explanation\": \"Brief explanation of what changes will be applied.\",\n"
-            "  \"replacements\": [\n"
-            "    {\n"
-            "      \"find\": \"def old_function():\\n    pass\",\n"
-            "      \"replace\": \"def old_function():\\n    # New implementation\\n    print('updated')\"\n"
-            "    }\n"
-            "  ]\n"
-            "}"
-        )
-
-        llm_prompt = (
-            f"USER REQUEST:\n{prompt_text}\n\n"
-            f"CURRENT SOURCE CODE OF 'app.py' (Analyze this code to locate the blocks to modify):\n"
-            f"{current_code}"
-        )
-
         global LLM_PROVIDER, LLM_MODEL, LLM_API_KEY
         
-        try:
-            raw_res = LLMClient.call_llm(LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, llm_prompt, system_instruction, response_format_json=True)
-            cleaned_res = LLMClient.clean_json_response(raw_res)
-            data = json.loads(cleaned_res)
+        system_instruction = (
+            "You are a highly advanced autonomous AI systems administrator and software engineer with full agentic access to the container.\n"
+            "You can execute shell commands, read and write files, query the SQLite database, and modify your own source code (app.py) using search-and-replace.\n\n"
+            "AVAILABLE TOOLS:\n"
+            "1. execute_bash: Run a shell command in the container. Returns stdout, stderr. Args: {\"tool\": \"execute_bash\", \"command\": \"cmd\"}\n"
+            "2. read_file: Read a text file. Args: {\"tool\": \"read_file\", \"filepath\": \"path\"}\n"
+            "3. write_file: Write/overwrite a text file. Args: {\"tool\": \"write_file\", \"filepath\": \"path\", \"content\": \"data\"}\n"
+            "4. query_database: Run a SQL query against the database (data/careeragent.db). Args: {\"tool\": \"query_database\", \"sql\": \"query\"}\n"
+            "5. modify_code: Perform search-and-replace on app.py. Args: {\"tool\": \"modify_code\", \"find\": \"old\", \"replace\": \"new\"}\n"
+            "6. final_answer: Provide the final conversational response to the user. Args: {\"tool\": \"final_answer\", \"message\": \"text\"}\n\n"
+            "PROTOCOL:\n"
+            "You must invoke exactly one tool at a time by returning a single JSON block. Do not output markdown code fences (like ```json), just raw JSON.\n"
+            "Analyze the user request, call tools in a loop as needed, and deliver the final answer when done."
+        )
+        
+        history = []
+        should_restart = False
+        max_iterations = 6
+        
+        for iteration in range(max_iterations):
+            llm_prompt = f"USER REQUEST:\n{prompt_text}\n\n"
+            if history:
+                llm_prompt += "PREVIOUS TOOL CALL EXECUTION HISTORY:\n"
+                for h in history:
+                    llm_prompt += f"Tool Called: {h['tool']}\nArguments: {json.dumps(h['args'])}\nResult:\n{h['result']}\n\n"
             
-            explanation = data.get("explanation", "Applying code changes.")
-            replacements = data.get("replacements", [])
-            
-            if not replacements:
-                cls.send_message("⚠️ *Gemini determined no code changes were needed for this request.*", bot_token, chat_id)
+            try:
+                raw_res = LLMClient.call_llm(LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, llm_prompt, system_instruction, response_format_json=True)
+                cleaned_res = LLMClient.clean_json_response(raw_res)
+                action = json.loads(cleaned_res)
+            except Exception as e:
+                cls.send_message(f"❌ *Failed to get next agent action:* `{e}`", bot_token, chat_id)
                 return
                 
-            cls.send_message(f"🛠️ *Explanation / Açıklama:* {explanation}\n\n*Applying {len(replacements)} code change(s)...*", bot_token, chat_id)
-            
-            modified_code = current_code
-            mismatch = False
-            for idx, rep in enumerate(replacements, 1):
-                find_block = rep["find"]
-                replace_block = rep["replace"]
+            tool_name = action.get("tool")
+            if not tool_name:
+                cls.send_message("❌ *Agent returned an empty or invalid tool invocation.*", bot_token, chat_id)
+                return
                 
-                if find_block in modified_code:
-                    modified_code = modified_code.replace(find_block, replace_block, 1)
-                else:
-                    mismatch = True
-                    cls.send_message(f"❌ *Error:* Replacement #{idx} could not find matching code block in 'app.py'. Modification cancelled.", bot_token, chat_id)
-                    break
+            if tool_name == "final_answer":
+                message = action.get("message", "Task complete.")
+                cls.send_message(message, bot_token, chat_id)
+                
+                if should_restart:
+                    cls.send_message("🔄 *Hot-reloading system daemon now... / Sistem kendini yeniden başlatıyor...*", bot_token, chat_id)
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                return
+                
+            cls.send_message(f"⚙️ *Agent running tool:* `{tool_name}`...", bot_token, chat_id)
+            tool_result = ""
+            
+            try:
+                if tool_name == "execute_bash":
+                    cmd = action.get("command", "")
+                    import subprocess
+                    res = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=30)
+                    tool_result = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}\nEXIT CODE: {res.returncode}"
                     
-            if mismatch:
-                return
+                elif tool_name == "read_file":
+                    path = action.get("filepath", "")
+                    with open(path, "r", encoding="utf-8") as f:
+                        tool_result = f.read()[:8000]
+                        
+                elif tool_name == "write_file":
+                    path = action.get("filepath", "")
+                    content = action.get("content", "")
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    tool_result = f"Successfully wrote file: {path}"
+                    
+                elif tool_name == "query_database":
+                    sql = action.get("sql", "")
+                    with db_lock:
+                        with db.get_connection() as conn:
+                            rows = conn.execute(sql).fetchall()
+                            tool_result = json.dumps([dict(r) for r in rows], ensure_ascii=False, indent=2)
+                            
+                elif tool_name == "modify_code":
+                    find_val = action.get("find", "")
+                    replace_val = action.get("replace", "")
+                    
+                    file_path = "app.py"
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        current_code = f.read()
+                        
+                    if find_val in current_code:
+                        modified = current_code.replace(find_val, replace_val, 1)
+                        temp_file = "app_temp.py"
+                        with open(temp_file, "w", encoding="utf-8") as f:
+                            f.write(modified)
+                            
+                        import py_compile
+                        py_compile.compile(temp_file, doraise=True)
+                        
+                        with open(file_path, "w", encoding="utf-8") as f:
+                            f.write(modified)
+                            
+                        try:
+                            os.remove(temp_file)
+                        except Exception:
+                            pass
+                            
+                        tool_result = "SUCCESS: Code modified successfully. System will hot-reload once final_answer is reached."
+                        should_restart = True
+                    else:
+                        tool_result = "ERROR: Code block to replace was not matched in app.py."
+                else:
+                    tool_result = f"ERROR: Unknown tool name '{tool_name}'"
+            except Exception as ex:
+                tool_result = f"ERROR: Tool execution failed: {ex}"
                 
-            temp_file_path = "app_temp.py"
-            with open(temp_file_path, "w", encoding="utf-8") as f:
-                f.write(modified_code)
-                
-            import py_compile
-            try:
-                py_compile.compile(temp_file_path, doraise=True)
-            except Exception as syntax_err:
-                cls.send_message(f"❌ *Syntax Error in proposed changes:* `{syntax_err}`. Modification aborted for safety.", bot_token, chat_id)
-                try:
-                    os.remove(temp_file_path)
-                except Exception:
-                    pass
-                return
-                
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(modified_code)
-                
-            try:
-                os.remove(temp_file_path)
-            except Exception:
-                pass
-                
-            cls.send_message("✅ *Code updated and verified! Self-restarting daemon... / Kod güncellendi ve doğrulandı! Sistem kendini yeniden başlatıyor...*", bot_token, chat_id)
+            history.append({
+                "tool": tool_name,
+                "args": action,
+                "result": tool_result
+            })
             
+        cls.send_message("⚠️ *Agent reached maximum ReAct loop iterations (6). Terminating run for safety.*", bot_token, chat_id)
+        if should_restart:
+            cls.send_message("🔄 *Hot-reloading system daemon now...*", bot_token, chat_id)
             os.execv(sys.executable, [sys.executable] + sys.argv)
-            
-        except Exception as err:
-            cls.send_message(f"❌ *Failed to complete self-modification:* `{err}`", bot_token, chat_id)
 
     @classmethod
     def process_command(cls, chat_id: str, text: str, bot_token: str, db: DatabaseManager):
