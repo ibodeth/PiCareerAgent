@@ -394,7 +394,8 @@ class LLMClient:
                     "model": model_str,
                     "messages": messages,
                     "api_key": api_key,
-                    "temperature": 0.1
+                    "temperature": 0.1,
+                    "timeout": 30
                 }
                 
                 # Some providers/models (like OpenRouter free models) do not support response_format parameter.
@@ -1171,6 +1172,10 @@ class TelegramBot:
             "You are running inside a headless Docker Linux container (Debian-based) with NO GUI, NO X server, and NO active desktop/GUI windows.\n"
             "Do NOT attempt to run commands like xdotool, wmctrl, x11, or other GUI/desktop window tools because they will fail or timeout.\n"
             "If the user asks about windows or GUI features, explain that you are running in a headless server container environment without a GUI.\n\n"
+            "PROACTIVE ACTION PROTOCOL:\n"
+            "If the user asks you to write and run a script (e.g. Python, Bash, SQL, etc.), you MUST ACTUALLY execute it!\n"
+            "First write the script to a file using the 'write_file' tool, then execute it using the 'execute_bash' or appropriate tool.\n"
+            "Do NOT just output the code in a chat response and claim you will run it. You are an agent; you must take the actual administrative action and report the execution output to the user!\n\n"
             "AVAILABLE TOOLS:\n"
             "1. execute_bash: Run a shell command in the container. Returns stdout, stderr. Args: {\"tool\": \"execute_bash\", \"command\": \"cmd\"}\n"
             "2. read_file: Read a text file. Args: {\"tool\": \"read_file\", \"filepath\": \"path\"}\n"
