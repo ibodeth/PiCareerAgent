@@ -442,7 +442,7 @@ class FirecrawlClient:
         }
         payload = {
             "query": query,
-            "limit": 5,
+            "limit": 15,
             "scrapeOptions": {
                 "formats": ["markdown"],
                 "onlyMainContent": True,
@@ -2006,7 +2006,7 @@ def generate_search_queries_with_ai(region: str, language: str, provider: str, m
         "Niche/Specific Searches (Queries 6-10):\n"
         "6. BTK Akademi focused (use site:btkakademi.gov.tr or 'BTK Akademi').\n"
         "7. Patika.dev focused (use site:patika.dev or 'Patika.dev').\n"
-        "8. Coderspace or Kodluyoruz focused (use site:coderspace.co, site:kodluyoruz.org, 'Coderspace', or 'Kodluyoruz').\n"
+        "8. Coderspace, Kodluyoruz, or Techcareer.net focused (use site:coderspace.co, site:kodluyoruz.org, site:techcareer.net, 'Coderspace', 'Kodluyoruz', or 'Techcareer').\n"
         "9. Niche programs or active opportunities from Google.\n"
         "10. Niche programs or active opportunities from Microsoft.\n\n"
         "RULES:\n"
@@ -2049,7 +2049,7 @@ def get_search_queries(region: str, language: str) -> list:
             "yazılım kariyer fırsatları ücretsiz teknoloji eğitimleri 2026",
             "site:btkakademi.gov.tr yazılım eğitim kampı bilişim bootcamp 2026",
             "site:patika.dev yazılım eğitim kampları ücretsiz bootcamp 2026",
-            "site:coderspace.co OR site:kodluyoruz.org ücretsiz yazılım etkinlikleri bootcamp kariyer 2026",
+            "site:coderspace.co OR site:kodluyoruz.org OR site:techcareer.net ücretsiz yazılım etkinlikleri bootcamp kariyer 2026",
             "Google ücretsiz yazılım sertifika programı staj kampı 2026",
             "Microsoft ücretsiz bulut yazılım eğitim programları 2026"
         ]
@@ -2061,7 +2061,7 @@ def get_search_queries(region: str, language: str) -> list:
         "software engineering career opportunities global free tech programs 2026",
         "site:btkakademi.gov.tr free software training courses 2026",
         "site:patika.dev free coding bootcamp active registration 2026",
-        "site:coderspace.co OR site:kodluyoruz.org free tech career events bootcamps 2026",
+        "site:coderspace.co OR site:kodluyoruz.org OR site:techcareer.net free tech career events bootcamps 2026",
         "Google free coding training developer internship certificate 2026",
         "Microsoft free cloud engineering certificate training 2026"
     ]
