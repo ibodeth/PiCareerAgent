@@ -1,50 +1,37 @@
 # 🚀 PiCareerAgent (picareeragent)
 
-An autonomous, server-oriented, lightweight multi-user AI career assistant. 100% compatible with Raspberry Pi, Linux servers, and cloud daemons. Runs 24/7 silently to monitor custom announcement boards, perform smart proactive web-crawls, scan incoming emails using LLMs, auto-unsubscribe from spam newsletters, and notify you instantly on **Telegram** with ready-to-use career mentor suggestions!
-
-*PiCareerAgent, 7/24 kesintisiz şekilde web duyuru panolarını izleyen, LLM gücüyle proaktif aramalar yapan, gelen e-postalarınızı analiz eden, spam bültenlerden otomatik abonelik iptali gerçekleştiren ve hazır CV/mülakat tavsiyeleriyle **Telegram** üzerinden anlık bildirim gönderen otonom, sunucu odaklı ve çok kullanıcılı bir yapay zeka kariyer asistanıdır.*
+An autonomous, server-oriented, lightweight, and multi-user AI-driven career assistant. It is 100% compatible with Raspberry Pi, Linux servers, and cloud daemons. Operating silently in the background 24/7, PiCareerAgent monitors custom announcement boards, performs smart proactive web-crawls, scans incoming emails using Large Language Models (LLMs), triggers automated spam unsubscription loops, and delivers instant, visually rich notifications to your **Telegram** account with custom CV and career mentor advice.
 
 ---
 
-## 🗺️ Table of Contents / İçindekiler
-1. [Key Features / Temel Özellikler](#-key-features--temel-özellikler)
-2. [Architecture Design / Mimari Tasarım](#%EF%B8%8F-architecture-design--mimari-tasarım)
-3. [Configuration Reference / Konfigürasyon Kılavuzu](#%EF%B8%8F-configuration-reference--konfig%C3%BCrasyon-k%C4%B1lavuzu)
-4. [Deployment Steps / Dağıtım Adımları](#-deployment-steps--da%C4%9F%C4%B1t%C4%B1m-ad%C4%B1mlar%C4%B1)
-5. [Bot Interactive Commands / Bot Komutları](#-bot-interactive-commands--bot-komutlar%C4%B1)
-6. [Bilingual Guides / Detaylı Kurulum Rehberi](#-bilingual-guides--detayl%C4%B1-kurulum-rehberi)
-7. [Production Best Practices & Monitoring / Canlı Ortam Tavsiyeleri](#-production-best-practices--monitoring--canl%C4%B1-ortam-tavsiyeleri)
-8. [File Structure / Dosya Yapısı](#-file-structure--dosya-yap%C4%B1s%C4%B1)
+## 🗺️ Table of Contents
+1. [Key Features](#-key-features)
+2. [Architecture Design](#%EF%B8%8F-architecture-design)
+3. [Configuration Reference](#%EF%B8%8F-configuration-reference)
+4. [Deployment & Installation](#-deployment--installation)
+5. [Telegram Bot Interactive Commands](#-telegram-bot-interactive-commands)
+6. [Prerequisites & Key Setup Guide](#-prerequisites--key-setup-guide)
+7. [Production Best Practices & Thread Safety](#-production-best-practices--thread-safety)
+8. [File Structure](#-file-structure)
 
 ---
 
-## ✨ Key Features / Temel Özellikler
+## ✨ Key Features
 
-### 🇬🇧 English Features
-* **🌍 Proactive AI-Driven Scans**: Generates 10 hyper-optimized local search queries daily based on user's target region (Global, TR, US, EU) and language.
+* **🌍 Proactive AI-Driven Searches**: Daily generates 10 hyper-optimized local search queries customized to your target region (Global, TR, US, EU) and language using advanced AI.
 * **📝 Dynamic Web Scraping Pipeline**: 
-  * **Global Sweep**: Runs pre-configured high-probability career rules (bootcamps, fellowships, open-source challenges, certifications).
-  * **Custom Sites Crawl**: Extracts full page markdowns using [Firecrawl](https://firecrawl.dev) and filters them strictly using customized system prompts (e.g. `look for remote internships`).
-* **💼 Smart Job Application Tracker**: Fully automated database storage (`SQLite`) tracking your applications. Supports commands to view statistics, update application stages, or delete logs.
-* **📬 LLM Email Analyzer**: Connects to your IMAP mailbox over secure SSL, parses incoming emails using AI, alerts you on Telegram for critical recruitment updates, and updates the application tracker status (applied ➡️ interview ➡️ accepted/rejected).
-* **🚫 One-Click Spam Unsubscribe**: Identifies newsletter lists via AI and triggers programmatic unsubscribe loops immediately.
+  * **Global Sweep**: Periodically executes pre-configured high-probability career rules (bootcamps, open-source programs, certifications, hackathons).
+  * **Custom Sites Crawl**: Extracts full page markdowns using [Firecrawl](https://firecrawl.dev) and filters them using custom instructions defined by the user.
+* **💼 Smart Job Application Tracker**: Fully automated database storage (`SQLite`) tracking your applications. Supports viewing stats, updating application stages, and deleting records via Telegram commands.
+* **📬 LLM Email Analyzer**: Connects to your IMAP mailbox over a secure SSL channel, parses incoming messages using AI to capture critical recruitment updates, and automatically updates the job tracker status (applied ➡️ interview ➡️ accepted/rejected).
+* **🚫 Programmatic One-Click Unsubscribe**: Automatically detects newsletter and marketing subscription lists using AI, and executes background unsubscribing operations.
 * **🔒 Multi-User Secure DB**: Secure multi-user environment locked behind `AUTHORIZED_CHAT_IDS`. Powered by SQLite with Write-Ahead Logging (WAL) and Python `threading.Lock` thread-safety guarantees.
 
-### 🇹🇷 Türkçe Özellikler
-* **🌍 Yapay Zeka Destekli Otonom Arama**: Seçtiğiniz hedef bölgeye (Global, TR, US, EU) ve dile göre günlük 10 adet hiper-optimize edilmiş arama sorgusu oluşturup webi tarar.
-* **📝 Dinamik Web Tarama Hattı**:
-  * **Genel Tarama**: Yüksek olasılıklı kariyer fırsatlarını (kamplar, burslar, açık kaynak programları, sertifikalar) takip eder.
-  * **Özel Sayfa Takibi**: `/add` ile eklediğiniz sayfaları [Firecrawl](https://firecrawl.dev) ile kazır ve yazdığınız `/prompt` kurallarına göre filtreler.
-* **💼 Akıllı İş Başvuru Takip Paneli**: SQLite tabanlı tamamen otomatik başvuru takip sistemi. Telegram üzerinden durum güncelleme, silme ve listeleme destekler.
-* **📬 LLM E-Posta Analizcisi**: Gelen kutunuzu güvenli SSL üzerinden IMAP ile dinler, gelen mülakat davetlerini veya kararları AI ile yakalayıp durumu otomatik günceller.
-* **🚫 Tek Tıkla Abonelik İptali**: Yapay zekanın reklam/bülten olarak tanımladığı e-postaların aboneliklerinden otomatik olarak çıkar.
-* **🔒 Çok Kullanıcılı Güvenlik**: `AUTHORIZED_CHAT_IDS` ile sınırlandırılmış erişim yetkilendirmesi. SQLite WAL modu ve Python `threading.Lock` ile maksimum iş parçacığı güvenliği.
-
 ---
 
-## 🏗️ Architecture Design / Mimari Tasarım
+## 🏗️ Architecture Design
 
-PiCareerAgent is written completely in modern Python and features a lightweight **bilingual edge service architecture**:
+PiCareerAgent is written completely in modern Python and features a lightweight **service-oriented architecture**:
 
 ```mermaid
 graph TD
@@ -67,11 +54,11 @@ Instead of locking you into a single proprietary LLM endpoint, PiCareerAgent uti
 
 ---
 
-## ⚙️ Configuration Reference / Konfigürasyon Kılavuzu
+## ⚙️ Configuration Reference
 
 Configuration is managed strictly via environmental variables defined in the `.env` file:
 
-| Variable / Değişken | Type | Required | Description / Açıklama |
+| Variable | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `LLM_PROVIDER` | String | Yes | Provider name: `gemini`, `openai`, `openrouter`, `anthropic`. |
 | `LLM_MODEL` | String | Yes | Specific model name (e.g. `gemini/gemini-1.5-flash` or `meta-llama/llama-3.3-70b-instruct`). |
@@ -92,7 +79,7 @@ Configuration is managed strictly via environmental variables defined in the `.e
 
 ---
 
-## 🚀 Deployment Steps / Dağıtım Adımları
+## 🚀 Deployment & Installation
 
 Deploying PiCareerAgent in a production environment takes less than 3 minutes.
 
@@ -109,8 +96,8 @@ LLM_PROVIDER=gemini
 LLM_MODEL=gemini/gemini-1.5-flash
 LLM_API_KEY=AIzaSy...
 
-REGION=tr
-LANGUAGE=tr
+REGION=global
+LANGUAGE=en
 
 FIRECRAWL_API_KEY=fc-...
 TELEGRAM_BOT_TOKEN=8567...
@@ -139,22 +126,22 @@ docker compose logs -f picareeragent
 
 ---
 
-## 📱 Bot Interactive Commands / Bot Komutları
+## 📱 Telegram Bot Interactive Commands
 
 Interact directly with your agent on Telegram using these interactive slash commands:
 
-### ⚙️ System & Rules / Sistem ve Ayarlar
+### ⚙️ System & Rules
 * `/start` - Activate and register your profile on SQLite database.
 * `/settings` - Start the step-by-step interactive wizard to customize language and targeted region.
 * `/prompt <instructions>` - Set custom filtering rules for tracked sites (e.g. `/prompt look for remote internships`).
 * `/prompt reset` - Return to standard career opportunity filtering rules.
 
-### 🔗 Custom Site Tracking / Özel Sayfa Takibi
+### 🔗 Custom Site Tracking
 * `/add <URL>` - Track a custom announcements page, career site, or community board.
 * `/list` - List all websites currently tracked under your account.
 * `/remove <ID>` - Stop tracking a specific website.
 
-### 💼 Application Tracker / Başvuru Takip Paneli
+### 💼 Application Tracker
 * `/apply <Company/Opportunity>` - Log a new job/bootcamp application.
 * `/applications` - View all logged applications, stages, and stats.
 * `/status <ID> <stage>` - Update application stage (e.g. `/status 1 interview`, `/status 1 accepted`).
@@ -162,7 +149,7 @@ Interact directly with your agent on Telegram using these interactive slash comm
 
 ---
 
-## 🔑 Easy Guide to Getting Your Keys / Anahtar Kılavuzu
+## 🔑 Prerequisites & Key Setup Guide
 
 1. **Google Gemini**: Sign up at [Google AI Studio](https://aistudio.google.com/), click **Get API Key**. Extremely fast, reliable, and free of charge.
 2. **Firecrawl**: Sign up at [Firecrawl.dev](https://www.firecrawl.dev/) for a free API token allowing lightning-fast markdown extraction.
@@ -172,7 +159,7 @@ Interact directly with your agent on Telegram using these interactive slash comm
 
 ---
 
-## 🔒 Production Best Practices & Monitoring / Canlı Ortam Tavsiyeleri
+## 🔒 Production Best Practices & Thread Safety
 
 When running PiCareerAgent 24/7 on servers or Raspberry Pi:
 * **SQLite Persistence**: Ensure that `data/` directory is mounted correctly using Docker volumes. This guarantees database states survive container updates and re-builds.
@@ -182,7 +169,7 @@ When running PiCareerAgent 24/7 on servers or Raspberry Pi:
 
 ---
 
-## 📁 File Structure / Dosya Yapısı
+## 📁 File Structure
 
 ```
 PiCareerAgent/
@@ -198,4 +185,3 @@ PiCareerAgent/
 ---
 
 Got ideas, bugs, or feature requests? Feel free to open a Pull Request! Let's land that dream tech role! 🚀
-*Bir fikir veya hata bildiriminiz mi var? Hemen bir Pull Request açmaktan çekinmeyin! Hayalinizdeki işe ulaşmanız dileğiyle!* 🚀
