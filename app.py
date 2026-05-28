@@ -430,7 +430,7 @@ class LLMClient:
 # Real-time search and fallback scraping routines
 class FirecrawlClient:
     @staticmethod
-    def firecrawl_search(query: str, api_key: str) -> list:
+    def firecrawl_search(query: str, api_key: str, limit: int = 15) -> list:
         if not api_key:
             logging.warning("Firecrawl API Key missing. Skipping web search step.")
             return []
@@ -442,7 +442,7 @@ class FirecrawlClient:
         }
         payload = {
             "query": query,
-            "limit": 15,
+            "limit": limit,
             "scrapeOptions": {
                 "formats": ["markdown"],
                 "onlyMainContent": True,
@@ -1698,10 +1698,12 @@ def run_user_sweeps(db: DatabaseManager, firecrawl_key: str, provider: str, mode
             queries = generate_search_queries_with_ai(region, lang, provider, model, api_key)
             search_results = []
             
-            for query in queries:
+            for idx, query in enumerate(queries):
                 if not keep_running:
                     break
-                res = FirecrawlClient.firecrawl_search(query, firecrawl_key)
+                # Apply optimized limits to fit within credit constraints (Niche queries get limit=7, General get limit=5)
+                limit_val = 7 if idx >= 5 else 5
+                res = FirecrawlClient.firecrawl_search(query, firecrawl_key, limit=limit_val)
                 if res:
                     search_results.extend(res)
                     
