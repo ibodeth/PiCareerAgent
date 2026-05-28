@@ -1167,6 +1167,10 @@ class TelegramBot:
         system_instruction = (
             "You are a highly advanced autonomous AI systems administrator and software engineer with full agentic access to the container.\n"
             "You can execute shell commands, read and write files, query the SQLite database, and modify your own source code (app.py) using search-and-replace.\n\n"
+            "ENVIRONMENT LIMITATIONS:\n"
+            "You are running inside a headless Docker Linux container (Debian-based) with NO GUI, NO X server, and NO active desktop/GUI windows.\n"
+            "Do NOT attempt to run commands like xdotool, wmctrl, x11, or other GUI/desktop window tools because they will fail or timeout.\n"
+            "If the user asks about windows or GUI features, explain that you are running in a headless server container environment without a GUI.\n\n"
             "AVAILABLE TOOLS:\n"
             "1. execute_bash: Run a shell command in the container. Returns stdout, stderr. Args: {\"tool\": \"execute_bash\", \"command\": \"cmd\"}\n"
             "2. read_file: Read a text file. Args: {\"tool\": \"read_file\", \"filepath\": \"path\"}\n"
@@ -1220,22 +1224,31 @@ class TelegramBot:
                 return
                 
             cls.send_message(f"⚙️ *Agent running tool:* `{tool_name}`...", bot_token, chat_id)
+            logging.info(f"[Agent Loop] Running tool: {tool_name} with args: {action}")
             tool_result = ""
             
             try:
                 if tool_name == "execute_bash":
                     cmd = action.get("command", "")
+                    logging.info(f"[Agent Tool execute_bash] Command: {cmd}")
                     import subprocess
-                    res = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=30)
-                    tool_result = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}\nEXIT CODE: {res.returncode}"
+                    try:
+                        res = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=15)
+                        tool_result = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}\nEXIT CODE: {res.returncode}"
+                    except subprocess.TimeoutExpired as te:
+                        stdout = te.stdout.decode("utf-8", errors="ignore") if te.stdout else ""
+                        stderr = te.stderr.decode("utf-8", errors="ignore") if te.stderr else ""
+                        tool_result = f"ERROR: Command timed out after 15 seconds.\nSTDOUT SO FAR:\n{stdout}\nSTDERR SO FAR:\n{stderr}"
                     
                 elif tool_name == "read_file":
                     path = action.get("filepath", "")
+                    logging.info(f"[Agent Tool read_file] Path: {path}")
                     with open(path, "r", encoding="utf-8") as f:
                         tool_result = f.read()[:8000]
                         
                 elif tool_name == "write_file":
                     path = action.get("filepath", "")
+                    logging.info(f"[Agent Tool write_file] Path: {path}")
                     content = action.get("content", "")
                     with open(path, "w", encoding="utf-8") as f:
                         f.write(content)
@@ -1243,6 +1256,7 @@ class TelegramBot:
                     
                 elif tool_name == "query_database":
                     sql = action.get("sql", "")
+                    logging.info(f"[Agent Tool query_database] SQL: {sql}")
                     with db_lock:
                         with db.get_connection() as conn:
                             rows = conn.execute(sql).fetchall()
