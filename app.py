@@ -239,6 +239,21 @@ class DatabaseManager:
                         date_logged TEXT
                     )
                 """)
+                # Opportunities Table for tracking deadlines and start dates
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS opportunities (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id TEXT,
+                        title TEXT,
+                        url TEXT,
+                        deadline_date TEXT,
+                        start_date TEXT,
+                        notified_deadline INTEGER DEFAULT 0,
+                        notified_start INTEGER DEFAULT 0,
+                        created_date TEXT,
+                        UNIQUE(chat_id, url)
+                    )
+                """)
                 # Migrate schema automatically to support custom system prompt per user
                 try:
                     conn.execute("ALTER TABLE users ADD COLUMN custom_prompt TEXT DEFAULT NULL")
@@ -1417,11 +1432,34 @@ def run_user_sweeps(db: DatabaseManager, firecrawl_key: str, provider: str, mode
                 
                 if filtered_search:
                     compiled_search = compile_data_to_prompt(filtered_search)
-                    # Always use standard career filtering instructions for general web searches
-                    llm_output_search = filter_and_format_events(compiled_search, provider, model, api_key, lang, recent_sent_text, custom_prompt=None)
-                    empty_keyword = "BUGUN_YENI_ETKINLIK_YOK" if lang == "tr" else "NO_NEW_EVENTS_TODAY"
+                    opps_search = filter_and_format_events(compiled_search, provider, model, api_key, lang, recent_sent_text, custom_prompt=None)
                     
-                    if llm_output_search and empty_keyword not in llm_output_search:
+                    if opps_search:
+                        # 1. Save new opportunities in SQLite database
+                        with db_lock:
+                            with db.get_connection() as conn:
+                                for opp in opps_search:
+                                    conn.execute("""
+                                        INSERT OR IGNORE INTO opportunities (chat_id, title, url, deadline_date, start_date, created_date)
+                                        VALUES (?, ?, ?, ?, ?, ?)
+                                    """, (chat_id, opp["title"], opp["url"], opp.get("deadline"), opp.get("start_date"), today_str))
+                                conn.commit()
+                        
+                        # 2. Build Telegram Markdown message
+                        markdown_text = ""
+                        for opp in opps_search:
+                            markdown_text += (
+                                f"🚀 *[{opp['title']}]* ({opp.get('type', 'Opportunity')})\n"
+                                f"🏢 *Organizer:* {opp.get('organizer', 'N/A')}\n"
+                                f"📅 *Deadline:* `{opp.get('deadline') or 'N/A'}` | *Start:* `{opp.get('start_date') or 'N/A'}`\n"
+                                f"📝 *Summary:* {opp.get('summary')}\n"
+                                f"💡 *Mentor Advice:*\n"
+                                f"   *   🎯 *Skills:* {opp.get('skills')}\n"
+                                f"   *   💼 *CV Value:* {opp.get('cv_value')}\n"
+                                f"   *   🏃 *First Step:* {opp.get('first_step')}\n"
+                                f"🔗 [Click Here for Details]({opp['url']})\n\n"
+                            )
+                        
                         if lang == "tr":
                             header = f"📢 *GÜNLÜK FIRSATLAR RAPORU* 📢\n\n"
                             footer = f"\n\n🤖 _CareerAgent otonom asistanı tarafından gönderildi._"
@@ -1432,14 +1470,14 @@ def run_user_sweeps(db: DatabaseManager, firecrawl_key: str, provider: str, mode
                             header = f"📢 *DAILY TECH OPPORTUNITIES REPORT* 📢\n\n"
                             footer = f"\n\n🤖 _Sent automatically by CareerAgent daemon._"
                         
-                        full_message = f"{header}{llm_output_search}{footer}"
+                        full_message = f"{header}{markdown_text}{footer}"
                         TelegramBot.send_message(full_message, bot_token, chat_id)
                         
-                        sent_items = extract_sent_items_from_markdown(llm_output_search)
+                        # Store in sent history
                         with db_lock:
                             with db.get_connection() as conn:
-                                for item in sent_items:
-                                    conn.execute("INSERT OR IGNORE INTO sent_history (chat_id, title, url, sent_date) VALUES (?, ?, ?, ?)", (chat_id, item.get("title"), item.get("url"), today_str))
+                                for opp in opps_search:
+                                    conn.execute("INSERT OR IGNORE INTO sent_history (chat_id, title, url, sent_date) VALUES (?, ?, ?, ?)", (chat_id, opp["title"], opp["url"], today_str))
                                 conn.commit()
             
             # --- PROCESS & SEND PIPELINE 2: Custom Tracked Sites (User Custom Rules) ---
@@ -1461,10 +1499,34 @@ def run_user_sweeps(db: DatabaseManager, firecrawl_key: str, provider: str, mode
                     except Exception:
                         pass
                     
-                    llm_output_tracked = filter_and_format_events(compiled_tracked, provider, model, api_key, lang, recent_sent_text, custom_prompt)
-                    empty_keyword = "BUGUN_YENI_ETKINLIK_YOK" if lang == "tr" else "NO_NEW_EVENTS_TODAY"
+                    opps_tracked = filter_and_format_events(compiled_tracked, provider, model, api_key, lang, recent_sent_text, custom_prompt)
                     
-                    if llm_output_tracked and empty_keyword not in llm_output_tracked:
+                    if opps_tracked:
+                        # 1. Save new opportunities in SQLite database
+                        with db_lock:
+                            with db.get_connection() as conn:
+                                for opp in opps_tracked:
+                                    conn.execute("""
+                                        INSERT OR IGNORE INTO opportunities (chat_id, title, url, deadline_date, start_date, created_date)
+                                        VALUES (?, ?, ?, ?, ?, ?)
+                                    """, (chat_id, opp["title"], opp["url"], opp.get("deadline"), opp.get("start_date"), today_str))
+                                conn.commit()
+                        
+                        # 2. Build Telegram Markdown message
+                        markdown_text = ""
+                        for opp in opps_tracked:
+                            markdown_text += (
+                                f"🚀 *[{opp['title']}]* ({opp.get('type', 'Opportunity')})\n"
+                                f"🏢 *Source/Organizer:* {opp.get('organizer', 'N/A')}\n"
+                                f"📅 *Deadline:* `{opp.get('deadline') or 'N/A'}` | *Start:* `{opp.get('start_date') or 'N/A'}`\n"
+                                f"📝 *Summary:* {opp.get('summary')}\n"
+                                f"💡 *AI Insights:*\n"
+                                f"   *   🎯 *Key Points:* {opp.get('skills')}\n"
+                                f"   *   💼 *Value:* {opp.get('cv_value')}\n"
+                                f"   *   🏃 *First Step:* {opp.get('first_step')}\n"
+                                f"🔗 [Click Here for Details]({opp['url']})\n\n"
+                            )
+                        
                         if lang == "tr":
                             header = f"📢 *TAKİP EDİLEN SİTELER RAPORU* 📢\n\n"
                             footer = f"\n\n🤖 _CareerAgent otonom asistanı tarafından gönderildi._"
@@ -1475,15 +1537,97 @@ def run_user_sweeps(db: DatabaseManager, firecrawl_key: str, provider: str, mode
                             header = f"📢 *TRACKED WEBSITES UPDATE REPORT* 📢\n\n"
                             footer = f"\n\n🤖 _Sent automatically by CareerAgent daemon._"
                         
-                        full_message = f"{header}{llm_output_tracked}{footer}"
+                        full_message = f"{header}{markdown_text}{footer}"
                         TelegramBot.send_message(full_message, bot_token, chat_id)
                         
-                        sent_items = extract_sent_items_from_markdown(llm_output_tracked)
+                        # Store in sent history
                         with db_lock:
                             with db.get_connection() as conn:
-                                for item in sent_items:
-                                    conn.execute("INSERT OR IGNORE INTO sent_history (chat_id, title, url, sent_date) VALUES (?, ?, ?, ?)", (chat_id, item.get("title"), item.get("url"), today_str))
+                                for opp in opps_tracked:
+                                    conn.execute("INSERT OR IGNORE INTO sent_history (chat_id, title, url, sent_date) VALUES (?, ?, ?, ?)", (chat_id, opp["title"], opp["url"], today_str))
                                 conn.commit()
+            
+            # --- 📅 PIPELINE 3: Active Reminders Check (Deadline & Activity Start Reminders) ---
+            logging.info(f"Checking upcoming deadline and program start reminders for User: {chat_id}...")
+            with db_lock:
+                with db.get_connection() as conn:
+                    opps_to_notify = conn.execute(
+                        "SELECT * FROM opportunities WHERE chat_id = ? AND (deadline_date = ? OR start_date = ?)", 
+                        (chat_id, today_str, today_str)
+                    ).fetchall()
+                    user_apps = conn.execute("SELECT opportunity_name FROM applications WHERE chat_id = ?", (chat_id,)).fetchall()
+            
+            app_names_lower = [a["opportunity_name"].lower().strip() for a in user_apps]
+            
+            for opp in opps_to_notify:
+                opp_title_lower = opp["title"].lower().strip()
+                
+                already_applied = False
+                for app_name in app_names_lower:
+                    if opp_title_lower in app_name or app_name in opp_title_lower:
+                        already_applied = True
+                        break
+                
+                # 1. Son Başvuru Günü Hatırlatması (Deadline Reminder)
+                if opp["deadline_date"] == today_str and opp["notified_deadline"] == 0:
+                    if not already_applied:
+                        if lang == "tr":
+                            reminder_msg = (
+                                "⚠️ *SON BAŞVURU GÜNÜ HATIRLATMASI!* ⚠️\n\n"
+                                f"📌 *Fırsat:* [{opp['title']}]({opp['url']})\n"
+                                f"📅 *Son Başvuru Tarihi:* BUGÜN! (`{opp['deadline_date']}`)\n\n"
+                                "Bu fırsata henüz başvurmadınız gibi görünüyor. Kaçırmamak için hemen inceleyin! 🚀"
+                            )
+                        elif lang == "all":
+                            reminder_msg = (
+                                "⚠️ *APPLICATION DEADLINE REMINDER / SON BAŞVURU HATIRLATMASI!* ⚠️\n\n"
+                                f"📌 *Opportunity / Fırsat:* [{opp['title']}]({opp['url']})\n"
+                                f"📅 *Deadline / Son Başvuru:* TODAY / BUGÜN! (`{opp['deadline_date']}`)\n\n"
+                                "You haven't logged an application for this yet. Don't miss out! / Kaçırmamak için hemen inceleyin! 🚀"
+                            )
+                        else:
+                            reminder_msg = (
+                                "⚠️ *APPLICATION DEADLINE REMINDER!* ⚠️\n\n"
+                                f"📌 *Opportunity:* [{opp['title']}]({opp['url']})\n"
+                                f"📅 *Deadline:* TODAY! (`{opp['deadline_date']}`)\n\n"
+                                "It looks like you haven't applied to this opportunity yet. Don't miss out! 🚀"
+                            )
+                        TelegramBot.send_message(reminder_msg, bot_token, chat_id)
+                    
+                    with db_lock:
+                        with db.get_connection() as conn:
+                            conn.execute("UPDATE opportunities SET notified_deadline = 1 WHERE id = ?", (opp["id"],))
+                            conn.commit()
+                
+                # 2. Faaliyet/Program Başlangıç Günü Hatırlatması (Start Date Reminder)
+                if opp["start_date"] == today_str and opp["notified_start"] == 0:
+                    if lang == "tr":
+                        reminder_msg = (
+                            "🎉 *PROGRAM BUGÜN BAŞLIYOR!* 🎉\n\n"
+                            f"📌 *Fırsat:* [{opp['title']}]({opp['url']})\n"
+                            f"📅 *Faaliyet Başlangıç Zamanı:* BUGÜN! (`{opp['start_date']}`)\n\n"
+                            "Gelişim yolculuğunuzda başarılar dileriz! Harika bir süreç olsun! 💻💪"
+                        )
+                    elif lang == "all":
+                        reminder_msg = (
+                            "🎉 *PROGRAM STARTING TODAY / ETKİNLİK BUGÜN BAŞLIYOR!* 🎉\n\n"
+                            f"📌 *Opportunity / Fırsat:* [{opp['title']}]({opp['url']})\n"
+                            f"📅 *Start Date / Başlangıç:* TODAY / BUGÜN! (`{opp['start_date']}`)\n\n"
+                            "We wish you great success in this journey! / Gelişim yolculuğunuzda başarılar dileriz! 💻💪"
+                        )
+                    else:
+                        reminder_msg = (
+                            "🎉 *PROGRAM STARTING TODAY!* 🎉\n\n"
+                            f"📌 *Opportunity:* [{opp['title']}]({opp['url']})\n"
+                            f"📅 *Start Date:* TODAY! (`{opp['start_date']}`)\n\n"
+                            "We wish you the best of luck on your new learning journey! 💻💪"
+                        )
+                    TelegramBot.send_message(reminder_msg, bot_token, chat_id)
+                    
+                    with db_lock:
+                        with db.get_connection() as conn:
+                            conn.execute("UPDATE opportunities SET notified_start = 1 WHERE id = ?", (opp["id"],))
+                            conn.commit()
             
             # Log run date completion in DB
             with db_lock:
@@ -1599,8 +1743,8 @@ def get_agent_prompt(region: str) -> str:
         return "Find currently active bootcamps, hackathons and CTF opportunities in 2026 for developers in Turkey. Retrieve details."
     return "Find currently active free remote coding bootcamps, online developer hackathons, and CTF competitions in 2026 globally."
 
-def filter_and_format_events(raw_data_text: str, provider: str, model: str, api_key: str, language: str, recent_sent_text: str = "", custom_prompt: str = None) -> str:
-    """Utilizes the configured AI provider through LiteLLM to filter events and append custom AI Career Mentor Advice blocks."""
+def filter_and_format_events(raw_data_text: str, provider: str, model: str, api_key: str, language: str, recent_sent_text: str = "", custom_prompt: str = None) -> list:
+    """Utilizes the configured AI provider through LiteLLM to filter events, extract structured dates, and return a JSON list of opportunities."""
     if custom_prompt and custom_prompt.strip():
         system_instruction = (
             "You are an autonomous custom site and event filtering agent. Your task is to extract relevant opportunities, news, or updates from the raw data payload according to the user's custom instructions.\n\n"
@@ -1608,21 +1752,24 @@ def filter_and_format_events(raw_data_text: str, provider: str, model: str, api_
             f"{custom_prompt}\n\n"
             "RULES:\n"
             "1. ONLY extract information that matches the user's custom instructions above. If an entry does not match, ignore it.\n"
-            "2. IMPORTANT: Keep all suggestions EXTREMELY CONCISE and punchy for mobile screens. Avoid wordiness.\n"
-            "3. Present the results as a clean English Markdown list.\n"
-            "4. Use EXACTLY this template (Keep advice items limited to a single short sentence):\n"
-            "   🚀 *[Opportunity/Update Name]* (Type)\n"
-            "   🏢 *Organizer/Source:* Institution or site name\n"
-            "   📅 *Date/Deadline:* Date, deadline, or date spotted\n"
-            "   📝 *Summary:* Concise single-sentence description.\n"
-            "   💡 *AI Insights:*\n"
-            "      *   🎯 *Key Points:* 2-3 key highlights or technologies.\n"
-            "      *   💼 *Value:* Why this matters (One short sentence).\n"
-            "      *   🏃 *First Step:* 1 concrete action item for today.\n"
-            "   🔗 [Click Here for Details](URL)\n\n"
-            "5. If there are no active opportunities/updates matching these criteria, return EXACTLY this keyword:\n"
-            "   'NO_NEW_EVENTS_TODAY'\n\n"
-            "Avoid fluff. Keep messages extremely punchy and clean."
+            "2. For each extracted entry, you MUST strictly extract/infer the application deadline and the program/event start date in YYYY-MM-DD format. If not mentioned and cannot be reasonably inferred, set to null.\n"
+            "3. Return a valid JSON object matching EXACTLY the following structure (do not wrap in markdown or return extra text, just raw JSON):\n"
+            "{\n"
+            "  \"opportunities\": [\n"
+            "    {\n"
+            "      \"title\": \"Opportunity/Update Name\",\n"
+            "      \"type\": \"Type of update or event\",\n"
+            "      \"organizer\": \"Institution or site name\",\n"
+            "      \"url\": \"Strictly valid URL link found in data\",\n"
+            "      \"deadline\": \"YYYY-MM-DD or null\",\n"
+            "      \"start_date\": \"YYYY-MM-DD or null\",\n"
+            "      \"summary\": \"Concise single-sentence description\",\n"
+            "      \"skills\": \"2-3 key highlights or technologies gained\",\n"
+            "      \"cv_value\": \"Why this matters to a developer/professional (one short sentence)\",\n"
+            "      \"first_step\": \"1 concrete action item for today\"\n"
+            "    }\n"
+            "  ]\n"
+            "}"
         )
     else:
         system_instruction = (
@@ -1630,21 +1777,24 @@ def filter_and_format_events(raw_data_text: str, provider: str, model: str, api_
             "(free bootcamps, hackathons, certificate programs, CTFs) from the raw search results.\n\n"
             "RULES:\n"
             "1. PRIORITIZE FREE (or fully sponsored/scholarship-based) opportunities. Filter out paid commercial courses.\n"
-            "2. IMPORTANT: Keep all suggestions EXTREMELY CONCISE and punchy for mobile screens. Avoid wordiness.\n"
-            "3. Present the results as a clean English Markdown list.\n"
-            "4. Use EXACTLY this template (Keep advice items limited to a single short sentence):\n"
-            "   🚀 *[Opportunity Name]* (Type)\n"
-            "   🏢 *Organizer:* Institution name\n"
-            "   📅 *Date/Deadline:* Date or deadline\n"
-            "   📝 *Summary:* Concise single-sentence description.\n"
-            "   💡 *Mentor Advice:*\n"
-            "      *   🎯 *Skills:* 2-3 key technologies to learn.\n"
-            "      *   💼 *CV Value:* How to present this to tech recruiters (One short sentence).\n"
-            "      *   🏃 *First Step:* 1 concrete preparatory task for today.\n"
-            "   🔗 [Click Here for Details](URL)\n\n"
-            "5. If there are no active opportunities matching these criteria, return EXACTLY this keyword:\n"
-            "   'NO_NEW_EVENTS_TODAY'\n\n"
-            "Avoid fluff. Keep messages extremely punchy and clean."
+            "2. For each opportunity, you MUST strictly extract/infer the application deadline and the program/event start date in YYYY-MM-DD format. If not mentioned and cannot be reasonably inferred, set to null.\n"
+            "3. Return a valid JSON object matching EXACTLY the following structure (do not wrap in markdown or return extra text, just raw JSON):\n"
+            "{\n"
+            "  \"opportunities\": [\n"
+            "    {\n"
+            "      \"title\": \"Opportunity Name\",\n"
+            "      \"type\": \"Bootcamp/Hackathon/CTF/Certificate\",\n"
+            "      \"organizer\": \"Institution name\",\n"
+            "      \"url\": \"Strictly valid URL link found in data\",\n"
+            "      \"deadline\": \"YYYY-MM-DD or null\",\n"
+            "      \"start_date\": \"YYYY-MM-DD or null\",\n"
+            "      \"summary\": \"Concise single-sentence description\",\n"
+            "      \"skills\": \"2-3 key technologies to learn\",\n"
+            "      \"cv_value\": \"How to present this to tech recruiters (one short sentence)\",\n"
+            "      \"first_step\": \"1 concrete preparatory task for today\"\n"
+            "    }\n"
+            "  ]\n"
+            "}"
         )
     recent_sent_instruction = (
         f"\n\n⚠️ IMPORTANT - ALREADY SENT EVENTS:\n"
@@ -1657,10 +1807,13 @@ def filter_and_format_events(raw_data_text: str, provider: str, model: str, api_
         prompt = f"{recent_sent_instruction}\n\n{prompt}"
         
     try:
-        return LLMClient.call_llm(provider, model, api_key, prompt, system_instruction)
+        raw_res = LLMClient.call_llm(provider, model, api_key, prompt, system_instruction, response_format_json=True)
+        cleaned_res = LLMClient.clean_json_response(raw_res)
+        data = json.loads(cleaned_res)
+        return data.get("opportunities", [])
     except Exception as e:
-        logging.error(f"LLM filtering LiteLLM call exception: {e}")
-        return ""
+        logging.error(f"LLM filtering JSON extraction failed: {e}")
+        return []
 
 def extract_sent_items_from_markdown(markdown_text: str) -> list:
     items = []
