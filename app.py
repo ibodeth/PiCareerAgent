@@ -2189,6 +2189,139 @@ def setup_signal_handlers(bot_token: str, db: DatabaseManager):
     logging.info("Container OS signal handlers registered cleanly.")
 
 
+def backup_database_to_google_drive(db_path: str, db: DatabaseManager) -> bool:
+    """Backs up the SQLite database file to Google Drive using a Service Account."""
+    credentials_path = os.getenv("GOOGLE_DRIVE_CREDENTIALS_PATH", "data/google_credentials.json")
+    folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+    
+    if not os.path.exists(credentials_path):
+        logging.warning(f"Google Drive credentials file not found at '{credentials_path}'. Daily backup skipped.")
+        return False
+        
+    if not folder_id:
+        logging.warning("GOOGLE_DRIVE_FOLDER_ID is not configured in environment variables. Daily backup skipped.")
+        return False
+        
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaFileUpload
+        
+        logging.info("Initiating SQLite database backup to Google Drive...")
+        
+        # Load service account credentials with the drive.file scope (allows creating/updating files)
+        scopes = ['https://www.googleapis.com/auth/drive.file']
+        creds = service_account.Credentials.from_service_account_file(credentials_path, scopes=scopes)
+        
+        service = build('drive', 'v3', credentials=creds)
+        
+        # Format filename: careeragent_backup_YYYY-MM-DD_HHMMSS.db
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        backup_filename = f"careeragent_backup_{timestamp}.db"
+        
+        file_metadata = {
+            'name': backup_filename,
+            'parents': [folder_id]
+        }
+        
+        media = MediaFileUpload(db_path, mimetype='application/x-sqlite3', resumable=True)
+        
+        uploaded_file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, name, webViewLink'
+        ).execute()
+        
+        logging.info(f"Database backed up successfully to Google Drive! File ID: {uploaded_file.get('id')}")
+        
+        # Let's send a Telegram alert to the user about successful backup
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        if bot_token and chat_id:
+            lang = "tr"  # Try to read language from DB or default
+            try:
+                # Load first user's language as default for system messages
+                with db_lock:
+                    with db.get_connection() as conn:
+                        row = conn.execute("SELECT language FROM users WHERE chat_id = ?", (chat_id,)).fetchone()
+                        if row:
+                            lang = row["language"]
+            except Exception:
+                pass
+                
+            if lang == "tr":
+                msg = (
+                    f"💾 *VERİTABANI YEDEKLENDİ!* 💾\n\n"
+                    f"✅ Veritabanı başarıyla Google Drive'a yedeklendi!\n"
+                    f"📁 *Dosya Adı:* `{backup_filename}`\n"
+                    f"🆔 *Dosya ID:* `{uploaded_file.get('id')}`\n"
+                    f"🔗 [Google Drive'da Görüntüle]({uploaded_file.get('webViewLink')})"
+                )
+            else:
+                msg = (
+                    f"💾 *DATABASE BACKED UP SUCCESSFULLY!* 💾\n\n"
+                    f"✅ SQLite database has been backed up to Google Drive!\n"
+                    f"📁 *File Name:* `{backup_filename}`\n"
+                    f"🆔 *File ID:* `{uploaded_file.get('id')}`\n"
+                    f"🔗 [View on Google Drive]({uploaded_file.get('webViewLink')})"
+                )
+            TelegramBot.send_message(msg, bot_token, chat_id)
+            
+        return True
+    except Exception as e:
+        logging.error(f"Failed to backup database to Google Drive: {e}", exc_info=True)
+        # Send error alert to user
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        if bot_token and chat_id:
+            err_msg = (
+                f"❌ *VERİTABANI YEDEKLEME HATASI! / DATABASE BACKUP FAILED!* ❌\n\n"
+                f"Detaylar: `{str(e)}`"
+            )
+            TelegramBot.send_message(err_msg, bot_token, chat_id)
+        return False
+
+
+def database_backup_scheduler_worker(db: DatabaseManager, db_path: str):
+    """Background daemon thread worker that checks and triggers database backups every 24 hours."""
+    logging.info("Starting concurrent Google Drive Database Backup Scheduler Thread...")
+    while keep_running:
+        try:
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            
+            # Check last backup date from database configuration
+            last_backup = ""
+            try:
+                with db_lock:
+                    with db.get_connection() as conn:
+                        row = conn.execute("SELECT val FROM sys_config WHERE key = 'last_backup_date'").fetchone()
+                        if row:
+                            last_backup = row["val"]
+            except Exception as dbe:
+                logging.warning(f"Could not fetch last backup date from SQLite: {dbe}")
+                
+            if last_backup != today_str:
+                # Attempt to backup
+                success = backup_database_to_google_drive(db_path, db)
+                if success:
+                    # Update last backup date in database
+                    try:
+                        with db_lock:
+                            with db.get_connection() as conn:
+                                conn.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('last_backup_date', ?)", (today_str,))
+                                conn.commit()
+                    except Exception as dbe:
+                        logging.error(f"Failed to save last backup date to SQLite: {dbe}")
+        except Exception as e:
+            logging.error(f"Error in Database Backup Scheduler Thread: {e}")
+            
+        # Check every 60 minutes
+        for _ in range(360):
+            if not keep_running:
+                break
+            time.sleep(10)
+
+
 if __name__ == "__main__":
     load_dotenv()
     
@@ -2237,6 +2370,14 @@ if __name__ == "__main__":
         daemon=True
     )
     polling_thread.start()
+    
+    # Start automated daily Google Drive database backups in a concurrent background thread
+    backup_thread = threading.Thread(
+        target=database_backup_scheduler_worker,
+        args=(db, db_path),
+        daemon=True
+    )
+    backup_thread.start()
     
     # [STARTUP ONLINE NOTIFICATION]
     # Send a beautiful bilingual online telemetry message to all authorized chats on boot
