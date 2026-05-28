@@ -254,6 +254,16 @@ class DatabaseManager:
                         UNIQUE(chat_id, url)
                     )
                 """)
+                # Conversational Chat History Table for context-aware responses
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS chat_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id TEXT,
+                        role TEXT,
+                        message TEXT,
+                        timestamp TEXT
+                    )
+                """)
                 # Migrate schema automatically to support custom system prompt per user
                 try:
                     conn.execute("ALTER TABLE users ADD COLUMN custom_prompt TEXT DEFAULT NULL")
@@ -904,6 +914,29 @@ class TelegramBot:
             return False
 
     @classmethod
+    def record_chat_history(cls, chat_id: str, role: str, message: str, db: DatabaseManager):
+        try:
+            timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with db_lock:
+                with db.get_connection() as conn:
+                    conn.execute(
+                        "INSERT INTO chat_history (chat_id, role, message, timestamp) VALUES (?, ?, ?, ?)",
+                        (chat_id, role, message, timestamp_str)
+                    )
+                    # Keep history capped at 50 messages per user to preserve space
+                    conn.execute("""
+                        DELETE FROM chat_history 
+                        WHERE chat_id = ? AND id NOT IN (
+                            SELECT id FROM chat_history 
+                            WHERE chat_id = ? 
+                            ORDER BY id DESC LIMIT 50
+                        )
+                    """, (chat_id, chat_id))
+                    conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to record chat history for role {role}: {e}")
+
+    @classmethod
     def check_updates(cls, bot_token: str, db: DatabaseManager, authorized_ids: list):
         if not bot_token:
             return
@@ -1083,15 +1116,36 @@ class TelegramBot:
     def handle_natural_language_code_mod(cls, chat_id: str, prompt_text: str, bot_token: str, db: DatabaseManager):
         global LLM_PROVIDER, LLM_MODEL, LLM_API_KEY
 
+        # 1. Record the user's prompt in the conversational history
+        cls.record_chat_history(chat_id, "user", prompt_text, db)
+
+        # 2. Retrieve past conversation history from the database for context-aware responses
+        past_context = ""
+        try:
+            with db_lock:
+                with db.get_connection() as conn:
+                    rows = conn.execute(
+                        "SELECT role, message FROM chat_history WHERE chat_id = ? ORDER BY id DESC LIMIT 10", 
+                        (chat_id,)
+                    ).fetchall()
+            # Reverse DESC order to show chronological order
+            rows = list(reversed(rows))
+            if rows:
+                past_context = "\n".join([f"{r['role'].upper()}: {r['message']}" for r in rows])
+        except Exception as e:
+            logging.warning(f"Failed to retrieve chat history context: {e}")
+
         # Check if the user prompt is a simple greeting, conversational question, or general query.
         # We run a single fast LLM call without tool definition to reply directly, or output "__AGENT_REQUIRED__" if actual actions are needed.
         classification_instruction = (
             "You are a helpful and intelligent AI system administrator. Your task is to determine whether the user's "
             "message is a simple greeting, conversational question, or general query that does not require any "
             "actual system operations (such as running shell commands, modifying code, querying the database, or reading/writing files).\n\n"
-            "If the request is a simple greeting or general conversational query (e.g. 'selam', 'merhaba', 'hello', 'hi', "
-            "'nasılsın', 'what is this bot?', 'kimsin'), please respond to it directly in a polite, friendly, helpful, and natural way "
-            "in the user's language.\n"
+            "Here is the recent conversation history for context:\n"
+            f"{past_context}\n\n"
+            "If the request is a simple greeting, follow-up conversational question, or general query, "
+            "please respond to it directly in a polite, friendly, helpful, and natural way in the user's language, "
+            "referencing the context if necessary (for example, explaining why a previous action had a certain result).\n"
             "If the request requires executing commands, querying the database, inspecting/writing files, or modifying code, "
             "you MUST output EXACTLY the word: __AGENT_REQUIRED__"
         )
@@ -1102,6 +1156,8 @@ class TelegramBot:
             
             if "__AGENT_REQUIRED__" not in classification_resp_cleaned:
                 cls.send_message(classification_resp_cleaned, bot_token, chat_id)
+                # Record response in history!
+                cls.record_chat_history(chat_id, "assistant", classification_resp_cleaned, db)
                 return
         except Exception as e:
             logging.warning(f"Pre-classification LLM check failed: {e}. Falling back to full ReAct agent.")
@@ -1130,7 +1186,10 @@ class TelegramBot:
         max_iterations = 6
         
         for iteration in range(max_iterations):
-            llm_prompt = f"USER REQUEST:\n{prompt_text}\n\n"
+            llm_prompt = ""
+            if past_context:
+                llm_prompt += f"RECENT CONVERSATION HISTORY:\n{past_context}\n\n"
+            llm_prompt += f"USER REQUEST:\n{prompt_text}\n\n"
             if history:
                 llm_prompt += "PREVIOUS TOOL CALL EXECUTION HISTORY:\n"
                 for h in history:
@@ -1152,6 +1211,8 @@ class TelegramBot:
             if tool_name == "final_answer":
                 message = action.get("message", "Task complete.")
                 cls.send_message(message, bot_token, chat_id)
+                # Record response in history!
+                cls.record_chat_history(chat_id, "assistant", message, db)
                 
                 if should_restart:
                     cls.send_message("🔄 *Hot-reloading system daemon now... / Sistem kendini yeniden başlatıyor...*", bot_token, chat_id)
