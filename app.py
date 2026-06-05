@@ -30,7 +30,6 @@ litellm.num_retries = 2
 keep_running = True
 db_lock = threading.Lock()
 
-# Multi-lingual Localization Dictionary for pristine bilingual user experiences
 LOCALIZATION = {
     "en": {
         "welcome_new": (
@@ -76,98 +75,11 @@ LOCALIZATION = {
         "settings_lang_select": "🗣️ *Select System Language:*",
         "settings_region_select": "🌐 *Select Target Search Region:*",
         "settings_updated": "✅ Settings successfully updated!"
-    },
-    "tr": {
-        "welcome_new": (
-            "🚀 *CareerAgent Asistanına Hoş Geldiniz!* 🚀\n\n"
-            "Hesabınız başarıyla oluşturuldu. Bota aşağıdaki komutlarla hükmedebilirsiniz:\n"
-            "🔗 `/add <URL>` - Takip edilecek duyuru veya kariyer sayfası ekler.\n"
-            "📋 `/list` - Takip ettiğiniz özel sayfaları listeler.\n"
-            "🗑️ `/remove <ID>` - Sayfa takibini sonlandırır.\n"
-            "⚙️ `/settings` - Dil ve hedef arama bölgesi ayarlarını açar.\n\n"
-            "💼 *İŞ BAŞVURU TAKİP PANELİ:* \n"
-            "📝 `/apply <Kurum/Fırsat Adı>` - Yeni bir iş başvurusu kaydeder.\n"
-            "📊 `/applications` - Tüm başvurularınızı ve aşamalarını listeler.\n"
-            "🚦 `/status <App_ID> <Yeni_Durum>` - Başvuru durumunu günceller (applied, interview, accepted, rejected).\n"
-            "🗑️ `/delete <App_ID>` - Başvuru kaydını siler."
-        ),
-        "welcome_back": (
-            "👋 *Tekrar Hoş Geldiniz!*\n\n"
-            "Kariyer asistanınız arka planda çalışıyor. Tercihlerinizi özelleştirmek için `/settings` yazabilirsiniz."
-        ),
-        "unauthorized": "❌ *Erişim Engellendi.* Bu botu kullanma izniniz bulunmamaktadır.",
-        "start_first": "⚠️ Lütfen önce `/start` komutunu göndererek hesabınızı aktifleştirin.",
-        "add_url_missing": "⚠️ *Hata:* Lütfen bir URL belirtin.\nKullanım: `/add https://example.com`",
-        "add_url_success": "✅ *Takip Listesine Eklendi:*\n🔗 {url}\n\nAI bu adresi günlük döngüde tarayacak. Sadece yeni bir duyuru/değişiklik tespit edildiğinde bilgilendirileceksiniz!",
-        "add_url_error": "❌ *Hata:* Adres eklenirken sorun oluştu: {error}",
-        "list_empty": "📭 *Takip listeniz boş.* `/add <URL>` ile takip edilecek site ekleyebilirsiniz.",
-        "list_title": "📋 *Takip Edilen Özel Siteler:*\n\n{sites}",
-        "remove_id_missing": "⚠️ *Hata:* Lütfen silinecek site ID'sini belirtin. Kullanım: `/remove <ID>`",
-        "remove_success": "🗑️ *Takip listesinden kaldırıldı.* (ID: {id})",
-        "remove_not_found": "❌ Belirtilen ID ile eşleşen takip edilen site bulunamadı.",
-        "apply_name_missing": "⚠️ *Hata:* Lütfen başvurduğunuz kurum/fırsat adını girin. Kullanım: `/apply Google Cloud Kampı`",
-        "apply_success": "📝 *Başvuru Kaydedildi!* 🚀\n\n📌 *Fırsat:* `{name}`\n🚦 *Durum:* `Applied` (Aşama değiştirmek için: `/status <ID> <aşama>` kullanın)",
-        "apps_empty": "📭 *Kayıtlı herhangi bir başvurunuz bulunmamaktadır.*\nYeni eklemek için: `/apply <Firma Adı>`",
-        "apps_title": "💼 *İŞ BAŞVURU TAKİP PANELİ* 💼\n\n{apps}",
-        "status_missing": "⚠️ *Hata:* Eksik argüman.\nKullanım: `/status <ID> <Yeni_Durum>`\nÖrnek: `/status 1 interview`",
-        "status_success": "🚦 *Başvuru Durumu Güncellendi!* (ID: {id})\n👉 Aşama: *{status}*",
-        "status_not_found": "❌ Belirtilen ID ile eşleşen başvuru kaydı bulunamadı.",
-        "delete_id_missing": "⚠️ *Hata:* Lütfen silinecek başvuru ID'sini belirtin. Kullanım: `/delete <ID>`",
-        "delete_success": "🗑️ *Başvuru kaydı silindi.* (ID: {id})",
-        "delete_not_found": "❌ Belirtilen ID ile eşleşen başvuru kaydı bulunamadı.",
-        "settings_title": "⚙️ *CareerAgent Ayarları* ⚙️\n\nYapay zeka arama bölgenizi ve bot dilinizi aşağıdaki butonları kullanarak özelleştirebilirsiniz:\n\n👤 *Kullanıcı Chat ID:* `{chat_id}`\n🌐 *Hedef Arama Bölgesi:* `{region}`\n🗣️ *Sistem Dili:* `{language}`",
-        "settings_btn_lang": "Dili Değiştir",
-        "settings_btn_region": "Bölgeyi Değiştir",
-        "settings_lang_select": "🗣️ *Sistem Dilini Seçin:*",
-        "settings_region_select": "🌐 *Hedef Arama Bölgesini Seçin:*",
-        "settings_updated": "✅ Ayarlar başarıyla güncellendi!"
-    },
-    "all": {
-        "welcome_new": (
-            "🚀 *Welcome to CareerAgent! / CareerAgent'a Hoş Geldiniz!* 🚀\n\n"
-            "Your account has been registered successfully. / Hesabınız başarıyla oluşturuldu.\n\n"
-            "🔗 `/add <URL>` - Track a custom announcement page. / Takip edilecek sayfa ekler.\n"
-            "📋 `/list` - List custom websites. / Takip edilen sayfaları listeler.\n"
-            "🗑️ `/remove <ID>` - Remove a website from tracking. / Sayfa takibini sonlandırır.\n"
-            "⚙️ `/settings` - Open settings. / Ayarları açar.\n\n"
-            "💼 *JOB APPLICATION TRACKER / İŞ BAŞVURU TAKİP PANELİ:* \n"
-            "📝 `/apply <Name>` - Register a job application. / Yeni başvuru kaydeder.\n"
-            "📊 `/applications` - List applications. / Başvuruları listeler.\n"
-            "🚦 `/status <App_ID> <Stage>` - Update status. / Durumu günceller.\n"
-            "🗑️ `/delete <App_ID>` - Delete job application. / Başvuruyu siler."
-        ),
-        "welcome_back": (
-            "👋 *Welcome Back! / Tekrar Hoş Geldiniz!*\n\n"
-            "CareerAgent is online / aktif. Send commands directly or type `/settings` to customize."
-        ),
-        "unauthorized": "❌ *Access Denied / Erişim Engellendi.* You do not have permissions to access this bot / Bu botu kullanma izniniz bulunmamaktadır.",
-        "start_first": "⚠️ Please activate your account first by sending `/start` / Lütfen önce `/start` komutunu gönderin.",
-        "add_url_missing": "⚠️ *Error / Hata:* Please specify a URL / Lütfen bir URL belirtin. Usage: `/add <URL>`",
-        "add_url_success": "✅ *Added to Tracking List / Takip Listesine Eklendi:*\n🔗 {url}\n\nAI will scan this website daily for announcements. / AI bu adresi günlük döngüde tarayacak.",
-        "add_url_error": "❌ *Error / Hata:* Failed to add URL / Adres eklenirken sorun oluştu: {error}",
-        "list_empty": "📭 *Your tracking list is empty / Takip listeniz boş.* Use `/add <URL>` to add one.",
-        "list_title": "📋 *Tracked Custom Websites / Takip Edilen Özel Siteler:*\n\n{sites}",
-        "remove_id_missing": "⚠️ *Error / Hata:* Please specify target ID / Lütfen silinecek site ID'sini belirtin. Usage: `/remove <ID>`",
-        "remove_success": "🗑️ *Removed from tracking / Takip listesinden kaldırıldı.* (ID: {id})",
-        "remove_not_found": "❌ Target ID not found / Eşleşen takip edilen site bulunamadı.",
-        "apply_name_missing": "⚠️ *Error / Hata:* Please specify name / Lütfen fırsat/kurum adı girin. Usage: `/apply <Name>`",
-        "apply_success": "📝 *Application Logged / Başvuru Kaydedildi!* 🚀\n\n📌 *Opportunity:* `{name}`\n🚦 *Status:* `Applied` (Use `/status <ID> <stage>` to update)",
-        "apps_empty": "📭 *No job applications logged yet / Kayıtlı başvurunuz bulunmamaktadır.*\nStart tracking using: `/apply <Company>`",
-        "apps_title": "💼 *JOB APPLICATION TRACKER / İŞ BAŞVURU TAKİP PANELİ* 💼\n\n{apps}",
-        "status_missing": "⚠️ *Error / Hata:* Missing arguments / Eksik argüman. Usage: `/status <ID> <New_Status>`",
-        "status_success": "🚦 *Application Status Updated / Başvuru Durumu Güncellendi!* (ID: {id})\n👉 Stage / Aşama: *{status}*",
-        "status_not_found": "❌ Target Application ID not found / Eşleşen başvuru kaydı bulunamadı.",
-        "delete_id_missing": "⚠️ *Error / Hata:* Please specify Application ID / Lütfen silinecek başvuru ID'sini belirtin. Usage: `/delete <ID>`",
-        "delete_success": "🗑️ *Application record deleted / Başvuru kaydı silindi.* (ID: {id})",
-        "delete_not_found": "❌ Target Application ID not found / Eşleşen başvuru kaydı bulunamadı.",
-        "settings_title": "⚙️ *CareerAgent Settings / CareerAgent Ayarları* ⚙️\n\nCustomize your localized AI search crawls and system language below:\n\n👤 *User ID:* `{chat_id}`\n🌐 *Target Region:* `{region}`\n🗣️ *System Language:* `{language}`",
-        "settings_btn_lang": "Change Language / Dili Değiştir",
-        "settings_btn_region": "Change Region / Bölgeyi Değiştir",
-        "settings_lang_select": "🗣️ *Select System Language / Sistem Dilini Seçin:*",
-        "settings_region_select": "🌐 *Select Target Search Region / Hedef Arama Bölgesini Seçin:*",
-        "settings_updated": "✅ Settings successfully updated / Ayarlar başarıyla güncellendi!"
     }
 }
+# Alias tr and all to en dictionary for backward compatibility and English standardization
+LOCALIZATION["tr"] = LOCALIZATION["en"]
+LOCALIZATION["all"] = LOCALIZATION["en"]
 
 
 # Thread-safe SQLite Database Manager with WAL (Write-Ahead Logging) concurrency enabled
@@ -620,7 +532,7 @@ class EmailScanner:
         port = int(user_config["email_port"] or 993)
         username = user_config["email_user"]
         password = user_config["email_password"]
-        language = user_config["language"]
+        language = "en"
         auto_unsubscribe = bool(user_config["email_auto_unsubscribe"])
         
         if not imap_server or not username or not password:
@@ -809,8 +721,8 @@ class EmailScanner:
 
     @staticmethod
     def analyze_email_importance(sender: str, subject: str, body: str, provider: str, model: str, api_key: str, language: str) -> dict:
-        language = language.lower().strip()
-        if language == "tr":
+        language = "en"
+        if False:
             system_instruction = (
                 "Sen son derece akıllı ve otonom bir sekreter ajansın. Görevin, bir e-postayı inceleyerek "
                 "kullanıcı için 'ÖNEMLİ' olup olmadığını tespit etmek, önemli değilse reklam/bülten listesi olup olmadığını belirlemektir.\n\n"
@@ -1122,13 +1034,11 @@ class TelegramBot:
             
         # RESTART WIZARD: Modify settings clicked, show Language select again
         elif data == "start_wizard":
-            text = "🗣️ *Select System Language / Sistem Dili Seçin:*"
+            text = "🗣️ *Select System Language:*"
             reply_markup = {
                 "inline_keyboard": [
                     [
-                        {"text": "🇬🇧 English", "callback_data": "lang_en"},
-                        {"text": "🇹🇷 Türkçe", "callback_data": "lang_tr"},
-                        {"text": "🌐 All / Her İkisi", "callback_data": "lang_all"}
+                        {"text": "🇬🇧 English", "callback_data": "lang_en"}
                     ]
                 ]
             }
@@ -1445,13 +1355,11 @@ class TelegramBot:
 
         # 1. /settings sequential step-by-step dropdown wizard (Starts with Language Select)
         if text.startswith("/settings"):
-            text_str = "🗣️ *Select System Language / Sistem Dili Seçin:*"
+            text_str = "🗣️ *Select System Language:*"
             reply_markup = {
                 "inline_keyboard": [
                     [
-                        {"text": "🇬🇧 English", "callback_data": "lang_en"},
-                        {"text": "🇹🇷 Türkçe", "callback_data": "lang_tr"},
-                        {"text": "🌐 All / Her İkisi", "callback_data": "lang_all"}
+                        {"text": "🇬🇧 English", "callback_data": "lang_en"}
                     ]
                 ]
             }
@@ -2075,21 +1983,6 @@ def generate_search_queries_with_ai(region: str, language: str, provider: str, m
         return get_search_queries(region, language)
 
 def get_search_queries(region: str, language: str) -> list:
-    region = region.lower().strip()
-    language = language.lower().strip()
-    if region == "tr" or (region == "global" and language == "tr") or language == "tr":
-        return [
-            "ücretsiz yazılım kampı hackathon ideathon yarışmaları 2026",
-            "ücretsiz yazılım yapay zeka sertifika programları kursları 2026",
-            "yazılım geliştirici staj ilanları stajyer alımı başvuruları 2026",
-            "ücretsiz yazılım eğitim kursları online bootcamp dersleri 2026",
-            "yazılım kariyer fırsatları ücretsiz teknoloji eğitimleri 2026",
-            "site:btkakademi.gov.tr yazılım eğitim kampı bilişim bootcamp 2026",
-            "site:patika.dev yazılım eğitim kampları ücretsiz bootcamp 2026",
-            "site:coderspace.co OR site:kodluyoruz.org OR site:techcareer.net ücretsiz yazılım etkinlikleri bootcamp kariyer 2026",
-            "Google ücretsiz yazılım sertifika programı staj kampı 2026",
-            "Microsoft ücretsiz bulut yazılım eğitim programları 2026"
-        ]
     return [
         "free coding hackathon ideathon software developer contest 2026",
         "free software engineering AI cloud certificate program 2026",
@@ -2288,14 +2181,6 @@ if __name__ == "__main__":
     for cid in notify_chats:
         if TELEGRAM_BOT_TOKEN:
             primary_lang = "en"
-            try:
-                with db_lock:
-                    with db.get_connection() as conn:
-                        row = conn.execute("SELECT language FROM users WHERE chat_id = ?", (cid,)).fetchone()
-                        if row:
-                            primary_lang = row["language"]
-            except Exception:
-                pass
                 
             if primary_lang == "tr":
                 startup_msg = (
